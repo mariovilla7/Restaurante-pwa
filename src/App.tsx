@@ -1,12 +1,27 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
-import NotFound from "./pages/NotFound.tsx";
+import MesaPage from "./pages/Mesa";
+import CocinaPage from "./pages/Cocina";
+import AdminPage from "./pages/Admin";
+import LoginPage from "./pages/Login";
+import DeviceSetup from "./pages/DeviceSetup";
+import NotFound from "./pages/NotFound";
+import { isDeviceAssigned } from "./lib/device";
+import { useState } from "react";
 
 const queryClient = new QueryClient();
+
+function MesaRoute() {
+  const [assigned, setAssigned] = useState(isDeviceAssigned());
+
+  if (!assigned) {
+    return <DeviceSetup onAssigned={() => setAssigned(true)} />;
+  }
+  return <MesaPage />;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -15,8 +30,11 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/" element={<Navigate to="/mesa" replace />} />
+          <Route path="/mesa" element={<MesaRoute />} />
+          <Route path="/cocina" element={<CocinaPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
