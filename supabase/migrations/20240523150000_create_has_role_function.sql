@@ -1,5 +1,8 @@
--- Esta función comprueba si un usuario tiene un rol específico en la tabla user_roles.
--- Es el núcleo de la política de seguridad basada en roles.
+-- Primero, eliminamos la función existente para evitar conflictos de nombres de parámetros.
+-- Especificamos los tipos de los argumentos para que Postgres sepa exactamente qué función eliminar.
+DROP FUNCTION IF EXISTS public.has_role(uuid, app_role);
+
+-- Ahora, creamos la función con la lógica correcta y la configuración de seguridad.
 CREATE OR REPLACE FUNCTION public.has_role(check_user_id uuid, check_role app_role)
 RETURNS boolean
 LANGUAGE plpgsql
