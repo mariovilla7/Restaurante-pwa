@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { getDeviceId } from '@/utils/deviceId';
+import { getDeviceId, clearDeviceConfig } from '@/lib/device';
 import type { Mesa } from '@/types/database';
 import { WifiOff, Wifi } from 'lucide-react';
 
@@ -11,8 +10,7 @@ export default function MesaPage() {
   const [loading, setLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Función para comprobar si este dispositivo tiene una mesa asignada
-  const checkMesaAssignment = useCallback(async () => {
+  const checkMesaAssignment = useCallback(async (showLoading = true) => {
     const id = getDeviceId();
     setDeviceId(id);
 
@@ -21,20 +19,38 @@ export default function MesaPage() {
       return;
     }
 
-    setLoading(true);
-    const { data } = await supabase
+    if (showLoading) setLoading(true);
+    const { data, error } = await supabase
       .from('mesas')
       .select('*')
       .eq('dispositivo_id', id)
-      .single();
+      .maybeSingle();
 
-    setMesa(data || null); // Asigna la mesa si se encuentra, o null si no
-    setLoading(false);
+    if (error) {
+      console.error("Error checking assignment:", error);
+      setMesa(null);
+    } else {
+      setMesa(data || null);
+    }
+    
+    if (showLoading) setLoading(false);
+
+    // Si después de la comprobación, no hay mesa, limpiamos la configuración local.
+    if (!data) {
+      clearDeviceConfig();
+      // Forzar un refresco de la página para que el router principal lo detecte.
+      window.location.reload();
+    }
   }, []);
 
-  // Carga inicial y listeners de estado de red
   useEffect(() => {
+    // Comprobación inicial
     checkMesaAssignment();
+
+    // Heartbeat: Comprobar periódicamente si la asignación sigue siendo válida.
+    const heartbeatInterval = setInterval(() => {
+      checkMesaAssignment(false); // No mostrar el spinner de carga en las comprobaciones de fondo
+    }, 15000); // Cada 15 segundos
 
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -43,15 +59,11 @@ export default function MesaPage() {
     window.addEventListener('offline', handleOffline);
 
     return () => {
+      clearInterval(heartbeatInterval);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, [checkMesaAssignment]);
-
-  // --- LA SOLUCIÓN ---
-  // Nos suscribimos a cualquier cambio en la tabla 'mesas'.
-  // Cuando ocurra un cambio, volvemos a ejecutar la comprobación.
-  useRealtimeSubscription('mesas', '*', checkMesaAssignment);
 
   if (loading) {
     return (
@@ -61,28 +73,16 @@ export default function MesaPage() {
     );
   }
 
-  // Si no hay mesa asignada, muestra la pantalla de configuración
+  // El router principal se encarga de mostrar DeviceSetup si no hay asignación.
+  // Este return es un fallback por si acaso.
   if (!mesa) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background p-4">
-        <div className="bg-card p-8 rounded-xl shadow-lg border w-full max-w-md text-center space-y-4">
-          <h1 className="text-2xl font-bold text-foreground">Dispositivo no asignado</h1>
-          <p className="text-muted-foreground">
-            Para usar esta tablet, un administrador debe vincularla a un número de mesa.
-          </p>
-          <div className="bg-secondary p-4 rounded-lg">
-            <label className="text-sm font-medium text-muted-foreground">ID de este Dispositivo</label>
-            <p className="text-lg font-mono break-all text-primary font-semibold">{deviceId}</p>
-          </div>
-          <p className="text-xs text-muted-foreground pt-2">
-            Copia este ID y pégalo en el panel de administración en la sección 'Gestión de Mesas'.
-          </p>
-        </div>
+      <div className="flex items-center justify-center h-screen bg-background text-foreground">
+        <p>Verificando asignación...</p>
       </div>
     );
   }
 
-  // Si la mesa está asignada, muestra la interfaz de cliente
   return (
     <div className="h-screen bg-background text-foreground">
       <header className="flex items-center justify-between p-4 border-b bg-card">
