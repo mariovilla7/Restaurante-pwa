@@ -13,33 +13,36 @@ export default function LoginPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    try {
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError || !signInData.user) {
+        toast.error('Credenciales incorrectas');
+        return;
+      }
 
-    if (signInError || !signInData.user) {
+      const userRole = signInData.user.app_metadata?.role;
+
+      if (userRole === 'admin') {
+        navigate('/admin');
+      } else if (userRole === 'cocina') {
+        navigate('/cocina');
+      } else if (userRole) {
+        navigate('/mesa');
+      } else {
+        toast.error('No tienes un rol asignado. Contacta al administrador.');
+        // --- PASO DE DEPURACIÓN ---
+        // Mostramos en la consola del navegador qué información del usuario estamos recibiendo.
+        // Así podemos ver si el rol realmente no está llegando.
+        console.log('DEBUG: Datos del usuario al fallar el login por rol:', signInData.user);
+        // --- FIN DEL PASO DE DEPURACIÓN ---
+        await supabase.auth.signOut();
+      }
+    } catch (error) {
+      console.error('Error inesperado en el login:', error);
+      toast.error('Ha ocurrido un error inesperado.');
+    } finally {
       setLoading(false);
-      toast.error('Credenciales incorrectas');
-      return;
-    }
-
-    setLoading(false);
-
-    const userRole = signInData.user.app_metadata?.role;
-
-    if (userRole === 'admin') {
-      navigate('/admin');
-    } else if (userRole === 'cocina') {
-      navigate('/cocina');
-    } else if (userRole) {
-      navigate('/mesa');
-    } else {
-      toast.error('No tienes un rol asignado. Contacta al administrador.');
-      // --- PASO DE DEPURACIÓN ---
-      // Mostramos en la consola del navegador qué información del usuario estamos recibiendo.
-      // Así podemos ver si el rol realmente no está llegando.
-      console.log('DEBUG: Datos del usuario al fallar el login por rol:', signInData.user);
-      // --- FIN DEL PASO DE DEPURACIÓN ---
-      await supabase.auth.signOut();
     }
   }
 
