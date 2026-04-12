@@ -3,20 +3,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
 serve(async (req) => {
-  // Esto es necesario para las llamadas desde el navegador (pre-flight request).
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // 1. Crea un cliente de Supabase con el contexto de autenticación del usuario que hace la llamada.
     const userClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     )
 
-    // 2. Verifica que el usuario que llama a la función es un administrador. ¡Paso de seguridad CRÍTICO!
     const { data: { user } } = await userClient.auth.getUser()
     if (user?.app_metadata?.role !== 'admin') {
       return new Response(
@@ -25,7 +22,6 @@ serve(async (req) => {
       )
     }
 
-    // 3. Obtiene los detalles del nuevo usuario del cuerpo de la petición.
     const { email, password, role } = await req.json()
     if (!email || !password || !role) {
       return new Response(
@@ -34,25 +30,38 @@ serve(async (req) => {
       )
     }
 
-    // 4. Crea un cliente de Supabase con la 'service_role' para poder realizar acciones de administrador.
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // 5. Crea el nuevo usuario y, lo más importante, guarda el rol en `app_metadata`.
+    // Paso 1: Crear el usuario sin metadata
     const { data: newUserData, error: newUserError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Confirma el email automáticamente.
-      app_metadata: { role: role }, // ¡¡AQUÍ ESTÁ LA MAGIA!!
+      email_confirm: true,
     })
 
     if (newUserError) {
-      return new Response(JSON.stringify({ error: newUserError.message }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ error: `Error al crear usuario: ${newUserError.message}` }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    if (!newUserData.user) {
+      return new Response(JSON.stringify({ error: 'El usuario no se pudo crear.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    return new Response(JSON.stringify(newUserData.user), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    // Paso 2: Actualizar el usuario con el rol en app_metadata
+    const { data: updatedUserData, error: updateUserError } = await supabaseAdmin.auth.admin.updateUserById(
+      newUserData.user.id,
+      { app_metadata: { role: role } }
+    )
+
+    if (updateUserError) {
+      // Si la actualización del rol falla, borramos el usuario para no dejar cuentas a medias.
+      await supabaseAdmin.auth.admin.deleteUser(newUserData.user.id)
+      return new Response(JSON.stringify({ error: `Error al asignar rol: ${updateUserError.message}` }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    return new Response(JSON.stringify(updatedUserData.user), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }

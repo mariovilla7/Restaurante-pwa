@@ -41,46 +41,63 @@ export function AdminUsers() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateLoading(true);
-
-    const { error } = await supabase.functions.invoke('create-user', {
-      body: { email: newEmail, password: newPassword, role: newRole },
+    // Log para asegurar que el rol se envía correctamente.
+    console.log('Enviando para crear usuario:', {
+      email: newEmail,
+      passwordLength: newPassword.length,
+      role: newRole,
     });
+    try {
+      const { error } = await supabase.functions.invoke('create-user', {
+        body: { email: newEmail, password: newPassword, role: newRole },
+      });
 
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success('Usuario creado con éxito.');
-      setNewEmail('');
-      setNewPassword('');
-      await loadUsers(); // Refresh the list
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success('Usuario creado con éxito.');
+        setNewEmail('');
+        setNewPassword('');
+        await loadUsers(); // Refresh the list
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ha ocurrido un error inesperado.';
+      toast.error(`Error al crear usuario: ${message}`);
+    } finally {
+      setCreateLoading(false);
     }
-    setCreateLoading(false);
   };
 
   const handleUpdateRole = async (userId: string, role: UserRole) => {
     setEditLoading(userId);
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-    const { error } = await supabase.functions.invoke('update-user-role', {
-      body: { userId, newRole: role },
-    });
+      const { error } = await supabase.functions.invoke('update-user-role', {
+        body: { userId, newRole: role },
+      });
 
-    if (error) {
-      toast.error(`Error al actualizar rol: ${error.message}`);
-    } else {
-      toast.success('Rol de usuario actualizado.');
-      // Update local state for immediate feedback
-      setUsers(prevUsers =>
-        prevUsers.map(u => (u.id === userId ? { ...u, role } : u))
-      );
+      if (error) {
+        toast.error(`Error al actualizar rol: ${error.message}`);
+      } else {
+        toast.success('Rol de usuario actualizado.');
+        // Update local state for immediate feedback
+        setUsers(prevUsers =>
+          prevUsers.map(u => (u.id === userId ? { ...u, role } : u))
+        );
 
-      // If the admin updated their own role, refresh the session to get the new token
-      if (currentUser && currentUser.id === userId) {
-        await supabase.auth.refreshSession();
-        toast.info('Tu rol ha sido actualizado. Tu sesión ha sido refrescada.');
+        // If the admin updated their own role, refresh the session to get the new token
+        if (currentUser && currentUser.id === userId) {
+          await supabase.auth.refreshSession();
+          toast.info('Tu rol ha sido actualizado. Tu sesión ha sido refrescada.');
+        }
       }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ha ocurrido un error inesperado.';
+      toast.error(`Error al actualizar rol: ${message}`);
+    } finally {
+      setEditLoading(null);
     }
-    setEditLoading(null);
   };
 
   return (
