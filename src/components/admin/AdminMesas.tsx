@@ -79,14 +79,25 @@ export function AdminMesas() {
       {/* Add Mesa */}
       <div className="bg-card rounded-lg border p-4 flex flex-col sm:flex-row items-stretch sm:items-end gap-3 sm:gap-4">
         <div className="flex-1">
-          <label className="text-sm font-medium">Número de Mesa</label>
+          <label className="text-sm font-medium text-foreground">Número de Mesa <span className="text-muted-foreground font-normal">(solo un número: 1, 2, 3...)</span></label>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={newMesaNumero}
-            onChange={e => setNewMesaNumero(e.target.value)}
+            onChange={e => {
+              const val = e.target.value.replace(/[^0-9]/g, '');
+              setNewMesaNumero(val);
+            }}
+            onPaste={e => {
+              const pasted = e.clipboardData.getData('text');
+              if (pasted.includes('-') || /[a-zA-Z]/.test(pasted)) {
+                e.preventDefault();
+                toast.error('⚠️ Esto parece un ID de dispositivo. Pégalo en el campo "ID de dispositivo" dentro de la tarjeta de una mesa ya creada.');
+              }
+            }}
             placeholder="Ej: 1"
             className="mt-1 w-full border rounded-lg px-3 py-2 bg-background text-foreground"
-            min="1"
           />
         </div>
         <button onClick={addMesa} className="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium touch-target whitespace-nowrap">
