@@ -1,21 +1,32 @@
+import { supabase } from '@/integrations/supabase/client';
 import type { DeviceConfig } from '@/types/database';
 
 const DEVICE_KEY = 'restaurant_device_config';
 
-export function getDeviceId(): string {
-  let config = getDeviceConfig();
-  if (!config) {
-    config = {
-      deviceId: crypto.randomUUID(),
-      mesaId: null,
-      mesaNumero: null,
-    };
-    localStorage.setItem(DEVICE_KEY, JSON.stringify(config));
+/**
+ * Ensures the device has a valid anonymous Supabase session.
+ * If no session exists, it signs in anonymously.
+ * Returns the authenticated user's ID, which is our reliable Device ID.
+ */
+export async function getAuthenticatedDeviceId(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    return session.user.id;
   }
-  return config.deviceId;
+
+  // If no session, sign in anonymously
+  const { data: signInData, error } = await supabase.auth.signInAnonymously();
+  if (error) {
+    console.error("Fatal: Device could not sign in anonymously.", error);
+    return null;
+  }
+  return signInData.session?.user.id || null;
 }
 
-export function getDeviceConfig(): DeviceConfig | null {
+// --- Local Storage Helpers ---
+// These are now secondary, used to store non-auth info like mesaNumero.
+
+export function getDeviceConfig(): Omit<DeviceConfig, 'deviceId'> | null {
   const raw = localStorage.getItem(DEVICE_KEY);
   if (!raw) return null;
   try {
@@ -25,12 +36,12 @@ export function getDeviceConfig(): DeviceConfig | null {
   }
 }
 
-export function setDeviceConfig(config: DeviceConfig): void {
+export function setDeviceConfig(config: { mesaId: string; mesaNumero: number }): void {
   localStorage.setItem(DEVICE_KEY, JSON.stringify(config));
 }
 
-// Esta es la función que faltaba.
 export function clearDeviceConfig(): void {
+  // We don't sign out, just clear the local mesa assignment.
   localStorage.removeItem(DEVICE_KEY);
 }
 
