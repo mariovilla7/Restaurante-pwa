@@ -145,12 +145,12 @@ export function AdminUsers() {
                 </div>
                 <div className="flex items-center gap-2">
                   <select
-                    value={user.role}
+                    value={user.role === 'sin_rol' ? '' : user.role}
                     onChange={e => handleUpdateRole(user.id, e.target.value as UserRole)}
                     disabled={editLoading === user.id}
                     className={`bg-background border rounded-lg px-3 py-2 text-sm ${user.role === 'sin_rol' ? 'border-destructive text-destructive' : ''}`}
                   >
-                    {user.role === 'sin_rol' && <option value="sin_rol">Sin Rol Asignado</option>}
+                    {user.role === 'sin_rol' && <option value="" disabled>Asignar un rol...</option>}
                     <option value="admin">Administrador</option>
                     <option value="cocina">Cocina</option>
                     <option value="mesa">Mesa</option>
