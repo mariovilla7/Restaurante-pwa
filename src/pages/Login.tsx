@@ -13,29 +13,28 @@ export default function LoginPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
 
-    if (error) {
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (signInError || !signInData.user) {
+      setLoading(false);
       toast.error('Credenciales incorrectas');
       return;
     }
 
-    // Check user role to redirect
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    setLoading(false);
 
-    const { data: roles } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user.id);
+    const userRole = signInData.user.app_metadata?.role;
 
-    if (roles?.some(r => r.role === 'admin')) {
+    if (userRole === 'admin') {
       navigate('/admin');
-    } else if (roles?.some(r => r.role === 'cocina')) {
+    } else if (userRole === 'cocina') {
       navigate('/cocina');
-    } else {
+    } else if (userRole) {
       navigate('/mesa');
+    } else {
+      toast.error('No tienes un rol asignado. Contacta al administrador.');
+      await supabase.auth.signOut();
     }
   }
 

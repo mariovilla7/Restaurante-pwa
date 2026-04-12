@@ -4,9 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { AdminMenu } from '@/components/admin/AdminMenu';
 import { AdminMesas } from '@/components/admin/AdminMesas';
 import { AdminPedidos } from '@/components/admin/AdminPedidos';
-import { UtensilsCrossed, Table, ClipboardList, LogOut, Menu, X } from 'lucide-react';
+import { AdminUsers } from '@/components/admin/AdminUsers';
+import { toast } from 'sonner';
+import { UtensilsCrossed, Table, ClipboardList, LogOut, Menu, X, Users } from 'lucide-react';
 
-type Tab = 'menu' | 'mesas' | 'pedidos';
+type Tab = 'menu' | 'mesas' | 'pedidos' | 'usuarios';
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('menu');
@@ -14,13 +16,20 @@ export default function AdminPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const checkSession = async () => {
+    const checkSessionAndRole = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         navigate('/login', { replace: true });
+        return;
+      }
+
+      // Verify user has admin role from metadata
+      if (session.user.app_metadata?.role !== 'admin') {
+        toast.error('Acceso no autorizado.');
+        navigate('/login', { replace: true });
       }
     };
-    checkSession();
+    checkSessionAndRole();
   }, [navigate]);
 
   async function handleLogout() {
@@ -32,6 +41,7 @@ export default function AdminPage() {
     { id: 'menu' as Tab, label: 'Menú', icon: UtensilsCrossed },
     { id: 'mesas' as Tab, label: 'Mesas', icon: Table },
     { id: 'pedidos' as Tab, label: 'Pedidos', icon: ClipboardList },
+    { id: 'usuarios' as Tab, label: 'Usuarios', icon: Users },
   ];
 
   function selectTab(t: Tab) {
@@ -114,6 +124,7 @@ export default function AdminPage() {
         {tab === 'menu' && <AdminMenu />}
         {tab === 'mesas' && <AdminMesas />}
         {tab === 'pedidos' && <AdminPedidos />}
+        {tab === 'usuarios' && <AdminUsers />}
       </main>
     </div>
   );

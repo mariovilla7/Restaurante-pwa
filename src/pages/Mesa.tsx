@@ -1,183 +1,101 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useCart } from '@/hooks/useCart';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { getDeviceConfig } from '@/lib/device';
-import type { Categoria, Plato, Pedido, PedidoItem } from '@/types/database';
-import { MenuGrid } from '@/components/mesa/MenuGrid';
-import { CartSheet } from '@/components/mesa/CartSheet';
-import { OrderStatus } from '@/components/mesa/OrderStatus';
-import { FloatingActions } from '@/components/mesa/FloatingActions';
-import { CategoryTabs } from '@/components/mesa/CategoryTabs';
-import { toast } from 'sonner';
+import { getDeviceId } from '@/utils/deviceId';
+import type { Mesa } from '@/types/database';
+import { WifiOff, Wifi } from 'lucide-react';
 
 export default function MesaPage() {
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [platos, setPlatos] = useState<Plato[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [pedidoActivo, setPedidoActivo] = useState<Pedido | null>(null);
-  const [pedidoItems, setPedidoItems] = useState<PedidoItem[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
+  const [mesa, setMesa] = useState<Mesa | null>(null);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const cart = useCart();
-  const config = getDeviceConfig();
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  useEffect(() => {
-    loadMenu();
-    loadActivePedido();
-  }, []);
+  // Función para comprobar si este dispositivo tiene una mesa asignada
+  const checkMesaAssignment = useCallback(async () => {
+    const id = getDeviceId();
+    setDeviceId(id);
 
-  async function loadMenu() {
-    const [catRes, platRes] = await Promise.all([
-      supabase.from('categorias').select('*').eq('activa', true).order('orden'),
-      supabase.from('platos').select('*').eq('disponible', true).order('orden'),
-    ]);
-    if (catRes.data) {
-      setCategorias(catRes.data);
-      if (catRes.data.length > 0 && !activeCategory) {
-        setActiveCategory(catRes.data[0].id);
-      }
-    }
-    if (platRes.data) setPlatos(platRes.data);
-    setLoading(false);
-  }
-
-  async function loadActivePedido() {
-    if (!config?.mesaId) return;
-    const { data } = await supabase
-      .from('pedidos')
-      .select('*, pedido_items(*, plato:platos(*))')
-      .eq('mesa_id', config.mesaId)
-      .in('estado', ['en_espera', 'preparando'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (data) {
-      setPedidoActivo(data);
-      setPedidoItems((data as any).pedido_items || []);
-    } else {
-      setPedidoActivo(null);
-      setPedidoItems([]);
-    }
-  }
-
-  const handlePedidoChange = useCallback(() => {
-    loadActivePedido();
-  }, []);
-
-  useRealtimeSubscription('pedidos', '*', handlePedidoChange, config?.mesaId ? `mesa_id=eq.${config.mesaId}` : undefined);
-  useRealtimeSubscription('pedido_items', '*', handlePedidoChange);
-
-  async function submitOrder() {
-    if (!config?.mesaId || cart.items.length === 0) return;
-
-    const { data: pedido, error } = await supabase
-      .from('pedidos')
-      .insert({ mesa_id: config.mesaId, estado: 'en_espera', total: cart.total })
-      .select()
-      .single();
-
-    if (error || !pedido) {
-      toast.error('Error al enviar el pedido');
+    if (!id) {
+      setLoading(false);
       return;
     }
 
-    const items = cart.items.map(item => ({
-      pedido_id: pedido.id,
-      plato_id: item.plato.id,
-      cantidad: item.cantidad,
-      notas: item.notas || null,
-      estado: 'pendiente' as const,
-    }));
+    setLoading(true);
+    const { data } = await supabase
+      .from('mesas')
+      .select('*')
+      .eq('dispositivo_id', id)
+      .single();
 
-    await supabase.from('pedido_items').insert(items);
-    cart.clearCart();
-    setCartOpen(false);
-    toast.success('¡Pedido enviado!');
-    loadActivePedido();
-  }
+    setMesa(data || null); // Asigna la mesa si se encuentra, o null si no
+    setLoading(false);
+  }, []);
 
-  async function callWaiter() {
-    if (!config?.mesaId) return;
-    await supabase.from('notificaciones').insert({
-      mesa_id: config.mesaId,
-      tipo: 'camarero',
-      atendida: false,
-    });
-    toast.success('Camarero notificado');
-  }
+  // Carga inicial y listeners de estado de red
+  useEffect(() => {
+    checkMesaAssignment();
 
-  async function requestBill() {
-    if (!config?.mesaId) return;
-    await supabase.from('notificaciones').insert({
-      mesa_id: config.mesaId,
-      tipo: 'cuenta',
-      atendida: false,
-    });
-    toast.success('Cuenta solicitada');
-  }
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
 
-  const filteredPlatos = platos.filter(p => p.categoria_id === activeCategory);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [checkMesaAssignment]);
+
+  // --- LA SOLUCIÓN ---
+  // Nos suscribimos a cualquier cambio en la tabla 'mesas'.
+  // Cuando ocurra un cambio, volvemos a ejecutar la comprobación.
+  useRealtimeSubscription('mesas', '*', checkMesaAssignment);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background">
+      <div className="flex items-center justify-center h-screen bg-background text-foreground">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
       </div>
     );
   }
 
-  return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b bg-card shadow-sm">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Menú</h1>
-          {config?.mesaNumero && (
-            <p className="text-xs sm:text-sm text-muted-foreground">Mesa {config.mesaNumero}</p>
-          )}
+  // Si no hay mesa asignada, muestra la pantalla de configuración
+  if (!mesa) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background p-4">
+        <div className="bg-card p-8 rounded-xl shadow-lg border w-full max-w-md text-center space-y-4">
+          <h1 className="text-2xl font-bold text-foreground">Dispositivo no asignado</h1>
+          <p className="text-muted-foreground">
+            Para usar esta tablet, un administrador debe vincularla a un número de mesa.
+          </p>
+          <div className="bg-secondary p-4 rounded-lg">
+            <label className="text-sm font-medium text-muted-foreground">ID de este Dispositivo</label>
+            <p className="text-lg font-mono break-all text-primary font-semibold">{deviceId}</p>
+          </div>
+          <p className="text-xs text-muted-foreground pt-2">
+            Copia este ID y pégalo en el panel de administración en la sección 'Gestión de Mesas'.
+          </p>
         </div>
-        <button
-          onClick={() => setCartOpen(true)}
-          className="relative touch-target flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2.5 sm:py-3 rounded-lg font-semibold text-base sm:text-lg"
-        >
-          🛒 <span className="hidden sm:inline">Carrito</span>
-          {cart.itemCount > 0 && (
-            <span className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center text-xs sm:text-sm font-bold">
-              {cart.itemCount}
-            </span>
-          )}
-        </button>
-      </header>
-
-      {/* Categories */}
-      <CategoryTabs
-        categorias={categorias}
-        activeCategory={activeCategory}
-        onSelect={setActiveCategory}
-      />
-
-      {/* Menu Grid */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-4">
-        <MenuGrid platos={filteredPlatos} onAddToCart={cart.addItem} />
       </div>
+    );
+  }
 
-      {/* Order Status Banner */}
-      {pedidoActivo && (
-        <OrderStatus pedido={pedidoActivo} items={pedidoItems} />
-      )}
-
-      {/* Cart Sheet */}
-      <CartSheet
-        open={cartOpen}
-        onOpenChange={setCartOpen}
-        cart={cart}
-        onSubmit={submitOrder}
-      />
-
-      {/* Floating Actions */}
-      <FloatingActions onCallWaiter={callWaiter} onRequestBill={requestBill} />
+  // Si la mesa está asignada, muestra la interfaz de cliente
+  return (
+    <div className="h-screen bg-background text-foreground">
+      <header className="flex items-center justify-between p-4 border-b bg-card">
+        <h1 className="text-2xl font-bold">Mesa {mesa.numero}</h1>
+        <div className={`flex items-center gap-2 text-sm ${isOnline ? 'text-success' : 'text-destructive'}`}>
+          {isOnline ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-g" />}
+          {isOnline ? 'Conectado' : 'Sin conexión'}
+        </div>
+      </header>
+      <main className="p-4">
+        <h2 className="text-xl">¡Bienvenido!</h2>
+        <p className="text-muted-foreground">Aquí se mostrará el menú para realizar pedidos.</p>
+      </main>
     </div>
   );
 }
