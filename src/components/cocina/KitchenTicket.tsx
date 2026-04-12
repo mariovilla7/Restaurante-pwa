@@ -19,7 +19,7 @@ export function KitchenTicket({ pedido, items, onUpdateItemStatus }: Props) {
   const timeAgo = formatDistanceToNow(new Date(pedido.created_at), { locale: es, addSuffix: true });
 
   return (
-    <div className={`flex-shrink-0 w-[320px] bg-card rounded-lg border shadow-sm flex flex-col animate-slide-in-right ${
+    <div className={`bg-card rounded-lg border shadow-sm flex flex-col ${
       pedido.estado === 'en_espera' ? 'border-warning' : 'border-primary'
     }`}>
       {/* Header */}

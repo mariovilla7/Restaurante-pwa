@@ -8,12 +8,9 @@ import { toast } from 'sonner';
 export default function CocinaPage() {
   const [pedidos, setPedidos] = useState<(Pedido & { pedido_items: (PedidoItem & { plato: any })[] })[]>([]);
   const [loading, setLoading] = useState(true);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const prevCountRef = useRef(0);
 
   useEffect(() => {
-    // Create audio context for notification sound
-    audioRef.current = new Audio('data:audio/wav;base64,UklGRl9vT19teleGFfRm10teleIBAAAABAAEARAAAABAAEAAQABAAEABABkYXRh');
     loadPedidos();
   }, []);
 
@@ -61,7 +58,6 @@ export default function CocinaPage() {
   async function updateItemStatus(itemId: string, newStatus: 'en_cocina' | 'listo') {
     await supabase.from('pedido_items').update({ estado: newStatus }).eq('id', itemId);
 
-    // If all items are 'listo', update the pedido status
     const pedido = pedidos.find(p => p.pedido_items.some(i => i.id === itemId));
     if (pedido && newStatus === 'listo') {
       const allReady = pedido.pedido_items.every(i =>
@@ -72,7 +68,6 @@ export default function CocinaPage() {
       }
     }
 
-    // If any item goes to 'en_cocina', update pedido to 'preparando'
     if (newStatus === 'en_cocina' && pedido?.estado === 'en_espera') {
       await supabase.from('pedidos').update({ estado: 'preparando' }).eq('id', pedido.id);
     }
@@ -90,23 +85,23 @@ export default function CocinaPage() {
 
   return (
     <div className="h-screen bg-background flex flex-col">
-      <header className="flex items-center justify-between px-6 py-4 border-b bg-card shadow-sm">
-        <h1 className="text-2xl font-bold text-foreground">🔥 Cocina - KDS</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-muted-foreground text-sm">
-            {pedidos.length} pedido(s) activo(s)
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b bg-card shadow-sm">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground">🔥 Cocina</h1>
+        <div className="flex items-center gap-2 sm:gap-4">
+          <span className="text-muted-foreground text-xs sm:text-sm">
+            {pedidos.length} pedido(s)
           </span>
           <div className="w-3 h-3 bg-success rounded-full animate-pulse" />
         </div>
       </header>
 
-      <div className="flex-1 overflow-x-auto p-4">
+      <div className="flex-1 overflow-auto p-3 sm:p-4">
         {pedidos.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-xl">
+          <div className="flex items-center justify-center h-full text-muted-foreground text-lg sm:text-xl">
             Sin pedidos pendientes 🎉
           </div>
         ) : (
-          <div className="flex gap-4 h-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {pedidos.map(pedido => (
               <KitchenTicket
                 key={pedido.id}

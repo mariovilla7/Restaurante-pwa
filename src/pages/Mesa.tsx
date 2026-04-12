@@ -51,11 +51,14 @@ export default function MesaPage() {
       .in('estado', ['en_espera', 'preparando'])
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (data) {
       setPedidoActivo(data);
       setPedidoItems((data as any).pedido_items || []);
+    } else {
+      setPedidoActivo(null);
+      setPedidoItems([]);
     }
   }
 
@@ -128,20 +131,20 @@ export default function MesaPage() {
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b bg-card shadow-sm">
+      <header className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b bg-card shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Menú</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Menú</h1>
           {config?.mesaNumero && (
-            <p className="text-sm text-muted-foreground">Mesa {config.mesaNumero}</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">Mesa {config.mesaNumero}</p>
           )}
         </div>
         <button
           onClick={() => setCartOpen(true)}
-          className="relative touch-target flex items-center gap-2 bg-primary text-primary-foreground px-5 py-3 rounded-lg font-semibold text-lg"
+          className="relative touch-target flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2.5 sm:py-3 rounded-lg font-semibold text-base sm:text-lg"
         >
-          🛒 Carrito
+          🛒 <span className="hidden sm:inline">Carrito</span>
           {cart.itemCount > 0 && (
-            <span className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold">
+            <span className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center text-xs sm:text-sm font-bold">
               {cart.itemCount}
             </span>
           )}
@@ -156,7 +159,7 @@ export default function MesaPage() {
       />
 
       {/* Menu Grid */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4">
         <MenuGrid platos={filteredPlatos} onAddToCart={cart.addItem} />
       </div>
 
