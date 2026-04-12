@@ -9,14 +9,14 @@ interface Props {
 export function MenuGrid({ platos, onAddToCart }: Props) {
   if (platos.length === 0) {
     return (
-      <div className="flex items-center justify-center h-48 text-muted-foreground text-lg">
+      <div className="flex items-center justify-center h-48 text-muted-foreground text-base sm:text-lg">
         No hay platos disponibles en esta categoría
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
       {platos.map(plato => (
         <div
           key={plato.id}
@@ -37,12 +37,12 @@ export function MenuGrid({ platos, onAddToCart }: Props) {
             )}
           </div>
           <div className="p-3">
-            <h3 className="font-semibold text-foreground text-base truncate">{plato.nombre}</h3>
+            <h3 className="font-semibold text-foreground text-sm sm:text-base truncate">{plato.nombre}</h3>
             {plato.descripcion && (
-              <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{plato.descripcion}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-1">{plato.descripcion}</p>
             )}
             <div className="flex items-center justify-between mt-3">
-              <span className="text-lg font-bold text-primary">{plato.precio.toFixed(2)} €</span>
+              <span className="text-base sm:text-lg font-bold text-primary">{plato.precio.toFixed(2)} €</span>
               <button
                 onClick={() => onAddToCart(plato)}
                 className="touch-target bg-primary text-primary-foreground rounded-full w-10 h-10 flex items-center justify-center hover:opacity-90 transition-opacity"
