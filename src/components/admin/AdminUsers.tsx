@@ -59,6 +59,8 @@ export function AdminUsers() {
 
   const handleUpdateRole = async (userId: string, role: UserRole) => {
     setEditLoading(userId);
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+
     const { error } = await supabase.functions.invoke('update-user-role', {
       body: { userId, newRole: role },
     });
@@ -71,6 +73,12 @@ export function AdminUsers() {
       setUsers(prevUsers =>
         prevUsers.map(u => (u.id === userId ? { ...u, role } : u))
       );
+
+      // If the admin updated their own role, refresh the session to get the new token
+      if (currentUser && currentUser.id === userId) {
+        await supabase.auth.refreshSession();
+        toast.info('Tu rol ha sido actualizado. Tu sesión ha sido refrescada.');
+      }
     }
     setEditLoading(null);
   };
