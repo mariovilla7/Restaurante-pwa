@@ -8,6 +8,7 @@ export function AdminMesas() {
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [loading, setLoading] = useState(true);
   const [newMesaNumero, setNewMesaNumero] = useState('');
+  const [newMesaDeviceId, setNewMesaDeviceId] = useState('');
   const [deviceInputs, setDeviceInputs] = useState<Record<string, string>>({});
 
   useEffect(() => { loadMesas(); }, []);
@@ -28,9 +29,12 @@ export function AdminMesas() {
     if (!num || num <= 0) { toast.error('Número de mesa inválido'); return; }
     if (mesas.some(m => m.numero === num)) { toast.error('Ya existe esa mesa'); return; }
 
-    await supabase.from('mesas').insert({ numero: num, activa: true });
+    const deviceId = newMesaDeviceId.trim();
+
+    await supabase.from('mesas').insert({ numero: num, activa: true, dispositivo_id: deviceId || null });
     setNewMesaNumero('');
-    toast.success(`Mesa ${num} creada`);
+    setNewMesaDeviceId('');
+    toast.success(`Mesa ${num} creada` + (deviceId ? ' y vinculada.' : '.'));
     loadMesas();
   }
 
@@ -71,36 +75,49 @@ export function AdminMesas() {
         <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
           <li>Abre <code className="bg-secondary px-1 rounded">/mesa</code> en la tablet del cliente.</li>
           <li>Copia el <strong>ID del Dispositivo</strong> que aparece en pantalla.</li>
-          <li>Pégalo en el campo "ID de dispositivo" de la mesa correspondiente abajo.</li>
-          <li>Pulsa el botón <strong>Vincular</strong>.</li>
+          <li>Pégalo en el campo "ID de dispositivo" al añadir una mesa, o en una mesa ya existente.</li>
+          <li>Pulsa el botón <strong>Añadir Mesa</strong> o <strong>Vincular</strong>.</li>
         </ol>
       </div>
 
       {/* Add Mesa */}
-      <div className="bg-card rounded-lg border p-4 flex flex-col sm:flex-row items-stretch sm:items-end gap-3 sm:gap-4">
-        <div className="flex-1">
-          <label className="text-sm font-medium text-foreground">Número de Mesa <span className="text-muted-foreground font-normal">(solo un número: 1, 2, 3...)</span></label>
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={newMesaNumero}
-            onChange={e => {
-              const val = e.target.value.replace(/[^0-9]/g, '');
-              setNewMesaNumero(val);
-            }}
-            onPaste={e => {
-              const pasted = e.clipboardData.getData('text');
-              if (pasted.includes('-') || /[a-zA-Z]/.test(pasted)) {
-                e.preventDefault();
-                toast.error('⚠️ Esto parece un ID de dispositivo. Pégalo en el campo "ID de dispositivo" dentro de la tarjeta de una mesa ya creada.');
-              }
-            }}
-            placeholder="Ej: 1"
-            className="mt-1 w-full border rounded-lg px-3 py-2 bg-background text-foreground"
-          />
+      <div className="bg-card rounded-lg border p-4 space-y-4">
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium text-foreground">Número de Mesa <span className="text-muted-foreground font-normal">(obligatorio)</span></label>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={newMesaNumero}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                setNewMesaNumero(val);
+              }}
+              onPaste={e => {
+                const pasted = e.clipboardData.getData('text');
+                if (pasted.includes('-') || /[a-zA-Z]/.test(pasted)) {
+                  e.preventDefault();
+                  toast.error('Estás pegando un ID de dispositivo en el campo de número de mesa. Pégalo en el campo de ID, a la derecha.', { duration: 8000 });
+                  setNewMesaDeviceId(pasted);
+                }
+              }}
+              placeholder="Ej: 1"
+              className="mt-1 w-full border rounded-lg px-3 py-2 bg-background text-foreground"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-foreground">ID de Dispositivo <span className="text-muted-foreground font-normal">(opcional)</span></label>
+            <input
+              type="text"
+              value={newMesaDeviceId}
+              onChange={e => setNewMesaDeviceId(e.target.value)}
+              placeholder="Pegar ID aquí..."
+              className="mt-1 w-full border rounded-lg px-3 py-2 bg-background text-foreground font-mono"
+            />
+          </div>
         </div>
-        <button onClick={addMesa} className="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium touch-target whitespace-nowrap">
+        <button onClick={addMesa} className="w-full bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium touch-target whitespace-nowrap">
           Añadir Mesa
         </button>
       </div>
