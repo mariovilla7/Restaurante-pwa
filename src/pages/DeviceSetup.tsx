@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getDeviceId, setDeviceConfig } from '@/lib/device';
+import { getAuthenticatedDeviceId, setDeviceConfig } from '@/lib/device';
 import { supabase } from '@/integrations/supabase/client';
-import { Monitor, Copy } from 'lucide-react';
+import { Monitor, Copy, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -9,11 +9,23 @@ interface Props {
 }
 
 export default function DeviceSetup({ onAssigned }: Props) {
-  const [deviceId] = useState(getDeviceId);
-  const [checking, setChecking] = useState(true);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const initializeDevice = useCallback(async () => {
+    const id = await getAuthenticatedDeviceId();
+    if (id) {
+      setDeviceId(id);
+      setLoading(false);
+    } else {
+      // Handle the fatal error of not being able to get a device ID
+      toast.error("No se pudo inicializar el dispositivo. Revisa la conexión.");
+    }
+  }, []);
 
   const checkAssignment = useCallback(async () => {
-    console.log('Checking assignment for device:', deviceId);
+    if (!deviceId) return;
+    
     const { data } = await supabase
       .from('mesas')
       .select('*')
@@ -21,21 +33,23 @@ export default function DeviceSetup({ onAssigned }: Props) {
       .maybeSingle();
 
     if (data) {
-      console.log('Device assigned to mesa:', data.numero);
-      setDeviceConfig({ deviceId, mesaId: data.id, mesaNumero: data.numero });
+      setDeviceConfig({ mesaId: data.id, mesaNumero: data.numero });
       onAssigned();
     }
-    setChecking(false);
   }, [deviceId, onAssigned]);
 
   useEffect(() => {
-    // Comprobación inicial
-    checkAssignment();
+    initializeDevice();
+  }, [initializeDevice]);
 
-    // Suscripción a cambios en tiempo real
+  useEffect(() => {
+    if (!deviceId) return;
+
+    checkAssignment(); // Initial check
+
     const channel = supabase
       .channel(`device-assign-${deviceId}`)
-      .on(
+      .on<any>(
         'postgres_changes',
         {
           event: 'UPDATE',
@@ -43,8 +57,7 @@ export default function DeviceSetup({ onAssigned }: Props) {
           table: 'mesas',
           filter: `dispositivo_id=eq.${deviceId}`,
         },
-        (payload) => {
-          console.log('Realtime update received for this device:', payload);
+        () => {
           checkAssignment();
         }
       )
@@ -56,8 +69,18 @@ export default function DeviceSetup({ onAssigned }: Props) {
   }, [deviceId, checkAssignment]);
 
   function copyId() {
+    if (!deviceId) return;
     navigator.clipboard.writeText(deviceId);
     toast.success('ID copiado al portapapeles');
+  }
+
+  if (loading || !deviceId) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background text-foreground">
+        <Loader2 className="w-8 h-8 animate-spin mb-4" />
+        <p>Inicializando dispositivo...</p>
+      </div>
+    );
   }
 
   return (
@@ -83,9 +106,6 @@ export default function DeviceSetup({ onAssigned }: Props) {
             </button>
           </div>
         </div>
-        {checking && (
-          <p className="text-sm text-muted-foreground animate-pulse">Verificando asignación...</p>
-        )}
         <p className="text-xs text-muted-foreground">
           La pantalla se actualizará automáticamente al vincular el dispositivo.
         </p>
