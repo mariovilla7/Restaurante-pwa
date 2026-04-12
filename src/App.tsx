@@ -7,19 +7,31 @@ import MesaPage from "./pages/Mesa";
 import CocinaPage from "./pages/Cocina";
 import AdminPage from "./pages/Admin";
 import LoginPage from "./pages/Login";
+import DeviceSetup from "./pages/DeviceSetup";
 import NotFound from "./pages/NotFound";
+import { isDeviceAssigned } from "./lib/device";
+import { useState } from "react";
 
 const queryClient = new QueryClient();
+
+function MesaRoute() {
+  const [assigned, setAssigned] = useState(isDeviceAssigned());
+
+  if (!assigned) {
+    return <DeviceSetup onAssigned={() => setAssigned(true)} />;
+  }
+  return <MesaPage />;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/" element={<Navigate to="/mesa" replace />} />
-          <Route path="/mesa" element={<MesaPage />} />
+          <Route path="/mesa" element={<MesaRoute />} />
           <Route path="/cocina" element={<CocinaPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/login" element={<LoginPage />} />
