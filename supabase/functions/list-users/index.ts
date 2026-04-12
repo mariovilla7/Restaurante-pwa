@@ -1,9 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts'; // Import corsHeaders
+import { corsHeaders } from '../_shared/cors.ts'; // Correctly import the shared headers
 
 serve(async (req) => {
-  // Handle CORS preflight request
+  // This is the crucial part for handling the browser's preflight request.
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -37,7 +37,7 @@ serve(async (req) => {
     const sanitizedUsers = users.map(u => ({
       id: u.id,
       email: u.email,
-      role: u.app_metadata?.role || 'sin_rol', // Use a specific string for users without a role
+      role: u.app_metadata?.role || 'sin_rol',
       created_at: u.created_at,
     }));
 
