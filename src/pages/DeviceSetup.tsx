@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { getDeviceId, getDeviceConfig, setDeviceConfig } from '@/lib/device';
+import { useEffect, useState, useCallback } from 'react';
+import { getDeviceId, setDeviceConfig } from '@/lib/device';
 import { supabase } from '@/integrations/supabase/client';
 import { Monitor, Copy } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,13 +12,8 @@ export default function DeviceSetup({ onAssigned }: Props) {
   const [deviceId] = useState(getDeviceId);
   const [checking, setChecking] = useState(true);
 
-  useEffect(() => {
-    checkAssignment();
-    const interval = setInterval(checkAssignment, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  async function checkAssignment() {
+  const checkAssignment = useCallback(async () => {
+    console.log('Checking assignment for device:', deviceId);
     const { data } = await supabase
       .from('mesas')
       .select('*')
@@ -26,11 +21,39 @@ export default function DeviceSetup({ onAssigned }: Props) {
       .maybeSingle();
 
     if (data) {
+      console.log('Device assigned to mesa:', data.numero);
       setDeviceConfig({ deviceId, mesaId: data.id, mesaNumero: data.numero });
       onAssigned();
     }
     setChecking(false);
-  }
+  }, [deviceId, onAssigned]);
+
+  useEffect(() => {
+    // Comprobación inicial
+    checkAssignment();
+
+    // Suscripción a cambios en tiempo real
+    const channel = supabase
+      .channel(`device-assign-${deviceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'mesas',
+          filter: `dispositivo_id=eq.${deviceId}`,
+        },
+        (payload) => {
+          console.log('Realtime update received for this device:', payload);
+          checkAssignment();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [deviceId, checkAssignment]);
 
   function copyId() {
     navigator.clipboard.writeText(deviceId);
@@ -64,7 +87,7 @@ export default function DeviceSetup({ onAssigned }: Props) {
           <p className="text-sm text-muted-foreground animate-pulse">Verificando asignación...</p>
         )}
         <p className="text-xs text-muted-foreground">
-          Se verificará automáticamente cada 5 segundos.
+          La pantalla se actualizará automáticamente al vincular el dispositivo.
         </p>
       </div>
     </div>

@@ -45,7 +45,6 @@ export function AdminMesas() {
       setNewMesaDeviceId('');
       toast.success(`Mesa ${num} creada` + (deviceId ? ' y vinculada.' : '.'));
       
-      // Add new table to state without full reload
       setMesas(prevMesas => [...prevMesas, newMesa].sort((a, b) => a.numero - b.numero));
       setDeviceInputs(prev => ({ ...prev, [newMesa.id]: newMesa.dispositivo_id || '' }));
     }
@@ -59,7 +58,7 @@ export function AdminMesas() {
       toast.error('Error al vincular: ' + error.message);
     } else {
       toast.success(deviceId ? 'Dispositivo vinculado' : 'Dispositivo desvinculado');
-      loadMesas(); // Reload to reflect change
+      loadMesas();
     }
   }
 
@@ -69,24 +68,29 @@ export function AdminMesas() {
       toast.error('Error al desvincular: ' + error.message);
     } else {
       toast.success('Dispositivo desvinculado');
-      loadMesas(); // Reload to reflect change
+      loadMesas();
     }
   }
 
   async function toggleMesa(mesa: Mesa) {
     const { error } = await supabase.from('mesas').update({ activa: !mesa.activa }).eq('id', mesa.id);
     if (error) toast.error('Error al cambiar estado: ' + error.message);
-    else loadMesas(); // Reload to reflect change
+    else loadMesas();
   }
 
   async function deleteMesa(id: string) {
-    if (!confirm('¿Eliminar esta mesa?')) return;
+    if (!confirm('¿Seguro que quieres eliminar esta mesa? Esta acción no se puede deshacer.')) return;
+    
     const { error } = await supabase.from('mesas').delete().eq('id', id);
+
     if (error) {
-      toast.error('Error al eliminar: ' + error.message);
+      if (error.code === '23503') { // Foreign key violation
+        toast.error('No se puede eliminar la mesa porque tiene pedidos asociados. Márcala como "Inactiva" en su lugar.', { duration: 8000 });
+      } else {
+        toast.error('Error al eliminar la mesa: ' + error.message);
+      }
     } else {
       toast.success('Mesa eliminada');
-      // Remove from state without full reload
       setMesas(prevMesas => prevMesas.filter(m => m.id !== id));
     }
   }
@@ -97,19 +101,17 @@ export function AdminMesas() {
     <div className="p-4 sm:p-6 space-y-6">
       <h2 className="text-xl sm:text-2xl font-bold text-foreground">Gestión de Mesas</h2>
 
-      {/* Instructions */}
       <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-sm text-foreground">
         <p className="font-semibold mb-1">¿Cómo vincular un dispositivo?</p>
         <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-          <li>Abre <code className="bg-secondary px-1 rounded">/mesa</code> en la tablet del cliente.</li>
-          <li>Copia el <strong>ID del Dispositivo</strong> que aparece en pantalla.</li>
-          <li>Pégalo en el campo "ID de dispositivo" al añadir una mesa, o en una mesa ya existente.</li>
-          <li>Pulsa el botón <strong>Añadir Mesa</strong> o <strong>Vincular</strong>.</li>
+          <li>Abre la aplicación en la tablet del cliente para ver su ID de Dispositivo.</li>
+          <li>Pégalo en el campo correspondiente de la mesa que quieras vincular.</li>
+          <li>Pulsa el botón <strong>Vincular</strong>.</li>
         </ol>
       </div>
 
-      {/* Add Mesa */}
       <div className="bg-card rounded-lg border p-4 space-y-4">
+        <h3 className="font-semibold text-lg">Añadir Nueva Mesa</h3>
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
             <label className="text-sm font-medium text-foreground">Número de Mesa <span className="text-muted-foreground font-normal">(obligatorio)</span></label>
@@ -118,15 +120,12 @@ export function AdminMesas() {
               inputMode="numeric"
               pattern="[0-9]*"
               value={newMesaNumero}
-              onChange={e => {
-                const val = e.target.value.replace(/[^0-9]/g, '');
-                setNewMesaNumero(val);
-              }}
+              onChange={e => setNewMesaNumero(e.target.value.replace(/[^0-9]/g, ''))}
               onPaste={e => {
                 const pasted = e.clipboardData.getData('text');
                 if (pasted.includes('-') || /[a-zA-Z]/.test(pasted)) {
                   e.preventDefault();
-                  toast.error('Estás pegando un ID de dispositivo en el campo de número de mesa. Pégalo en el campo de ID, a la derecha.', { duration: 8000 });
+                  toast.error('Estás pegando un ID en el campo de número. Pégalo en el campo de ID, a la derecha.', { duration: 8000 });
                   setNewMesaDeviceId(pasted);
                 }
               }}
@@ -150,20 +149,19 @@ export function AdminMesas() {
         </button>
       </div>
 
-      {/* Mesas List */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {mesas.map(mesa => (
           <div key={mesa.id} className={`bg-card rounded-lg border p-4 ${!mesa.activa ? 'opacity-50' : ''}`}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xl font-bold text-foreground">Mesa {mesa.numero}</h3>
-              <div className="flex gap-1">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => toggleMesa(mesa)}
                   className={`text-xs px-2 py-1 rounded-full ${mesa.activa ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}
                 >
                   {mesa.activa ? 'Activa' : 'Inactiva'}
                 </button>
-                <button onClick={() => deleteMesa(mesa.id)} className="p-1 text-destructive hover:opacity-70">
+                <button onClick={() => deleteMesa(mesa.id)} className="p-1 text-destructive hover:opacity-70" title="Eliminar mesa">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
