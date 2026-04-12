@@ -29,6 +29,11 @@ export function setDeviceConfig(config: DeviceConfig): void {
   localStorage.setItem(DEVICE_KEY, JSON.stringify(config));
 }
 
+// Esta es la función que faltaba.
+export function clearDeviceConfig(): void {
+  localStorage.removeItem(DEVICE_KEY);
+}
+
 export function isDeviceAssigned(): boolean {
   const config = getDeviceConfig();
   return !!config?.mesaId;
