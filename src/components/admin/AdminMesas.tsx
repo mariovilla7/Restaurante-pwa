@@ -14,8 +14,13 @@ export function AdminMesas() {
   useEffect(() => { loadMesas(); }, []);
 
   async function loadMesas() {
-    const { data } = await supabase.from('mesas').select('*').order('numero');
-    if (data) {
+    setLoading(true);
+    const { data, error } = await supabase.from('mesas').select('*').order('numero');
+    
+    if (error) {
+      toast.error('Error al cargar las mesas: ' + error.message);
+      setMesas([]);
+    } else if (data) {
       setMesas(data);
       const inputs: Record<string, string> = {};
       data.forEach(m => { inputs[m.id] = m.dispositivo_id || ''; });
@@ -31,36 +36,55 @@ export function AdminMesas() {
 
     const deviceId = newMesaDeviceId.trim();
 
-    await supabase.from('mesas').insert({ numero: num, activa: true, dispositivo_id: deviceId || null });
-    setNewMesaNumero('');
-    setNewMesaDeviceId('');
-    toast.success(`Mesa ${num} creada` + (deviceId ? ' y vinculada.' : '.'));
-    loadMesas();
+    const { error } = await supabase.from('mesas').insert({ numero: num, activa: true, dispositivo_id: deviceId || null });
+
+    if (error) {
+      toast.error('Error al crear la mesa: ' + error.message);
+    } else {
+      setNewMesaNumero('');
+      setNewMesaDeviceId('');
+      toast.success(`Mesa ${num} creada` + (deviceId ? ' y vinculada.' : '.'));
+      loadMesas();
+    }
   }
 
   async function assignDevice(mesaId: string) {
     const deviceId = (deviceInputs[mesaId] || '').trim();
-    await supabase.from('mesas').update({ dispositivo_id: deviceId || null }).eq('id', mesaId);
-    toast.success(deviceId ? 'Dispositivo vinculado' : 'Dispositivo desvinculado');
-    loadMesas();
+    const { error } = await supabase.from('mesas').update({ dispositivo_id: deviceId || null }).eq('id', mesaId);
+    
+    if (error) {
+      toast.error('Error al vincular: ' + error.message);
+    } else {
+      toast.success(deviceId ? 'Dispositivo vinculado' : 'Dispositivo desvinculado');
+      loadMesas();
+    }
   }
 
   async function unlinkDevice(mesaId: string) {
-    await supabase.from('mesas').update({ dispositivo_id: null }).eq('id', mesaId);
-    toast.success('Dispositivo desvinculado');
-    loadMesas();
+    const { error } = await supabase.from('mesas').update({ dispositivo_id: null }).eq('id', mesaId);
+    if (error) {
+      toast.error('Error al desvincular: ' + error.message);
+    } else {
+      toast.success('Dispositivo desvinculado');
+      loadMesas();
+    }
   }
 
   async function toggleMesa(mesa: Mesa) {
-    await supabase.from('mesas').update({ activa: !mesa.activa }).eq('id', mesa.id);
-    loadMesas();
+    const { error } = await supabase.from('mesas').update({ activa: !mesa.activa }).eq('id', mesa.id);
+    if (error) toast.error('Error al cambiar estado: ' + error.message);
+    else loadMesas();
   }
 
   async function deleteMesa(id: string) {
     if (!confirm('¿Eliminar esta mesa?')) return;
-    await supabase.from('mesas').delete().eq('id', id);
-    toast.success('Mesa eliminada');
-    loadMesas();
+    const { error } = await supabase.from('mesas').delete().eq('id', id);
+    if (error) {
+      toast.error('Error al eliminar: ' + error.message);
+    } else {
+      toast.success('Mesa eliminada');
+      loadMesas();
+    }
   }
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
@@ -176,7 +200,7 @@ export function AdminMesas() {
         ))}
       </div>
 
-      {mesas.length === 0 && (
+      {mesas.length === 0 && !loading && (
         <p className="text-center text-muted-foreground py-8">No hay mesas configuradas. Añade una arriba.</p>
       )}
     </div>
