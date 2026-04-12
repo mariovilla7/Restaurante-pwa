@@ -88,7 +88,7 @@ export default function MesaPage() {
       <header className="flex items-center justify-between p-4 border-b bg-card">
         <h1 className="text-2xl font-bold">Mesa {mesa.numero}</h1>
         <div className={`flex items-center gap-2 text-sm ${isOnline ? 'text-success' : 'text-destructive'}`}>
-          {isOnline ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-g" />}
+          {isOnline ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
           {isOnline ? 'Conectado' : 'Sin conexión'}
         </div>
       </header>
