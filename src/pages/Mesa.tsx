@@ -111,7 +111,7 @@ export default function MesaPage({ onUnassigned }: MesaPageProps) {
         </div>
       </header>
       
-      <main className="flex-1 overflow-y-auto p-4">
+      <main className="flex-1 overflow-y-auto p-4 min-h-0">
         <h2 className="text-3xl font-bold mb-4">Menú</h2>
         {menu.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
