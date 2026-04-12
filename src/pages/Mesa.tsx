@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { getAuthenticatedDeviceId, clearDeviceConfig, getDeviceConfig } from '@/lib/device';
-import type { Mesa } from '@/types/database';
-import { WifiOff, Wifi, Loader2 } from 'lucide-react';
+import type { Mesa, Plato } from '@/types/database';
+import { WifiOff, Wifi, Loader2, Hand, Receipt } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface MesaPageProps {
   onUnassigned: () => void;
@@ -10,6 +11,7 @@ interface MesaPageProps {
 
 export default function MesaPage({ onUnassigned }: MesaPageProps) {
   const [mesa, setMesa] = useState<Mesa | null>(null);
+  const [menu, setMenu] = useState<Plato[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -25,8 +27,8 @@ export default function MesaPage({ onUnassigned }: MesaPageProps) {
       onUnassigned();
     } else if (data) {
       setMesa(data);
+      loadMenu();
     } else {
-      // No data means this device is no longer assigned to this mesa
       clearDeviceConfig();
       onUnassigned();
     }
@@ -40,8 +42,6 @@ export default function MesaPage({ onUnassigned }: MesaPageProps) {
       onUnassigned();
       return;
     }
-    
-    // Check local storage first for a quick load
     const localConfig = getDeviceConfig();
     if (localConfig?.mesaId) {
       checkMesaAssignment(deviceId);
@@ -50,14 +50,18 @@ export default function MesaPage({ onUnassigned }: MesaPageProps) {
     }
   }, [onUnassigned, checkMesaAssignment]);
 
+  async function loadMenu() {
+    const { data, error } = await supabase.from('platos').select('*').order('nombre');
+    if (error) toast.error('No se pudo cargar el menú.');
+    else setMenu(data || []);
+  }
+
   useEffect(() => {
     initializeDevice();
-
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -66,19 +70,10 @@ export default function MesaPage({ onUnassigned }: MesaPageProps) {
 
   useEffect(() => {
     if (!mesa) return;
-
     const channel = supabase
       .channel(`mesa-updates-${mesa.id}`)
-      .on<any>(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'mesas',
-          filter: `id=eq.${mesa.id}`,
-        },
+      .on<any>('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'mesas', filter: `id=eq.${mesa.id}` },
         (payload) => {
-          // If the device ID has changed, this device has been unlinked.
           if (payload.new.dispositivo_id !== mesa.dispositivo_id) {
             clearDeviceConfig();
             onUnassigned();
@@ -86,10 +81,7 @@ export default function MesaPage({ onUnassigned }: MesaPageProps) {
         }
       )
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [mesa, onUnassigned]);
 
   if (loading) {
@@ -110,18 +102,47 @@ export default function MesaPage({ onUnassigned }: MesaPageProps) {
   }
 
   return (
-    <div className="h-screen bg-background text-foreground">
-      <header className="flex items-center justify-between p-4 border-b bg-card">
+    <div className="h-screen bg-background text-foreground flex flex-col">
+      <header className="flex items-center justify-between p-4 border-b bg-card flex-shrink-0">
         <h1 className="text-2xl font-bold">Mesa {mesa.numero}</h1>
         <div className={`flex items-center gap-2 text-sm ${isOnline ? 'text-success' : 'text-destructive'}`}>
           {isOnline ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
           {isOnline ? 'Conectado' : 'Sin conexión'}
         </div>
       </header>
-      <main className="p-4">
-        <h2 className="text-xl">¡Bienvenido!</h2>
-        <p className="text-muted-foreground">Aquí se mostrará el menú para realizar pedidos.</p>
+      
+      <main className="flex-1 overflow-y-auto p-4">
+        <h2 className="text-3xl font-bold mb-4">Menú</h2>
+        {menu.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {menu.map(plato => (
+              <div key={plato.id} className="bg-card border rounded-lg p-4 flex flex-col">
+                <h3 className="text-xl font-semibold mb-2">{plato.nombre}</h3>
+                <p className="text-muted-foreground flex-1">{plato.descripcion}</p>
+                <div className="flex items-center justify-between mt-4">
+                  <span className="text-lg font-bold">{plato.precio}€</span>
+                  <button className="bg-primary text-primary-foreground px-4 py-2 rounded-lg">
+                    Añadir
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-muted-foreground">No hay platos disponibles en el menú en este momento.</p>
+        )}
       </main>
+
+      <footer className="bg-card border-t p-4 flex justify-around items-center flex-shrink-0">
+        <button className="flex flex-col items-center gap-1 text-primary touch-target">
+          <Hand className="w-6 h-6" />
+          <span className="text-sm font-medium">Llamar Camarero</span>
+        </button>
+        <button className="flex flex-col items-center gap-1 text-primary touch-target">
+          <Receipt className="w-6 h-6" />
+          <span className="text-sm font-medium">Pedir la Cuenta</span>
+        </button>
+      </footer>
     </div>
   );
 }
