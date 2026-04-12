@@ -4,7 +4,11 @@ import { getDeviceId, clearDeviceConfig } from '@/lib/device';
 import type { Mesa } from '@/types/database';
 import { WifiOff, Wifi } from 'lucide-react';
 
-export default function MesaPage() {
+interface MesaPageProps {
+  onUnassigned: () => void;
+}
+
+export default function MesaPage({ onUnassigned }: MesaPageProps) {
   const [mesa, setMesa] = useState<Mesa | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -16,6 +20,7 @@ export default function MesaPage() {
 
     if (!id) {
       setLoading(false);
+      onUnassigned(); // Informar al padre que no hay asignación
       return;
     }
 
@@ -35,22 +40,19 @@ export default function MesaPage() {
     
     if (showLoading) setLoading(false);
 
-    // Si después de la comprobación, no hay mesa, limpiamos la configuración local.
+    // Si después de la comprobación, no hay mesa, limpiamos la config y notificamos al padre.
     if (!data) {
       clearDeviceConfig();
-      // Forzar un refresco de la página para que el router principal lo detecte.
-      window.location.reload();
+      onUnassigned(); // ¡Esta es la corrección! No más reload.
     }
-  }, []);
+  }, [onUnassigned]);
 
   useEffect(() => {
-    // Comprobación inicial
     checkMesaAssignment();
 
-    // Heartbeat: Comprobar periódicamente si la asignación sigue siendo válida.
     const heartbeatInterval = setInterval(() => {
-      checkMesaAssignment(false); // No mostrar el spinner de carga en las comprobaciones de fondo
-    }, 15000); // Cada 15 segundos
+      checkMesaAssignment(false);
+    }, 15000);
 
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -73,12 +75,13 @@ export default function MesaPage() {
     );
   }
 
-  // El router principal se encarga de mostrar DeviceSetup si no hay asignación.
-  // Este return es un fallback por si acaso.
+  // Si hay una mesa, se muestra la interfaz. Si no, el componente padre se encargará
+  // de mostrar la pantalla de configuración gracias a la llamada a onUnassigned.
   if (!mesa) {
+    // Este estado es temporal mientras el componente padre re-renderiza.
     return (
       <div className="flex items-center justify-center h-screen bg-background text-foreground">
-        <p>Verificando asignación...</p>
+        <p>Dispositivo desvinculado. Redirigiendo...</p>
       </div>
     );
   }

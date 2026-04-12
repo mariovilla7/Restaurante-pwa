@@ -20,7 +20,13 @@ function MesaRoute() {
   if (!assigned) {
     return <DeviceSetup onAssigned={() => setAssigned(true)} />;
   }
-  return <MesaPage />;
+  
+  // Cuando la MesaPage detecte que ha sido desasignada, llamará a esta función.
+  const handleUnassigned = () => {
+    setAssigned(false);
+  };
+
+  return <MesaPage onUnassigned={handleUnassigned} />;
 }
 
 const App = () => (
