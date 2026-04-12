@@ -52,7 +52,9 @@ export default function DeviceSetup({ onAssigned }: Props) {
         <div className="bg-secondary rounded-lg p-4">
           <p className="text-xs text-muted-foreground mb-1">ID del Dispositivo</p>
           <div className="flex items-center justify-center gap-2">
-            <code className="text-sm sm:text-lg font-mono font-bold text-foreground break-all select-all">{deviceId}</code>
+            <div className="flex-1 min-w-0">
+              <code className="text-sm sm:text-lg font-mono font-bold text-foreground break-all select-all">{deviceId}</code>
+            </div>
             <button onClick={copyId} className="p-2 hover:bg-muted rounded-md touch-target flex-shrink-0">
               <Copy className="w-4 h-4" />
             </button>
