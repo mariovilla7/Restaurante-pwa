@@ -19,7 +19,6 @@ export function AdminMesas() {
     
     if (error) {
       toast.error('Error al cargar las mesas: ' + error.message);
-      setMesas([]);
     } else if (data) {
       setMesas(data);
       const inputs: Record<string, string> = {};
@@ -35,16 +34,20 @@ export function AdminMesas() {
     if (mesas.some(m => m.numero === num)) { toast.error('Ya existe esa mesa'); return; }
 
     const deviceId = newMesaDeviceId.trim();
+    const newMesaData = { numero: num, activa: true, dispositivo_id: deviceId || null };
 
-    const { error } = await supabase.from('mesas').insert({ numero: num, activa: true, dispositivo_id: deviceId || null });
+    const { data: newMesa, error } = await supabase.from('mesas').insert(newMesaData).select().single();
 
     if (error) {
       toast.error('Error al crear la mesa: ' + error.message);
-    } else {
+    } else if (newMesa) {
       setNewMesaNumero('');
       setNewMesaDeviceId('');
       toast.success(`Mesa ${num} creada` + (deviceId ? ' y vinculada.' : '.'));
-      loadMesas();
+      
+      // Add new table to state without full reload
+      setMesas(prevMesas => [...prevMesas, newMesa].sort((a, b) => a.numero - b.numero));
+      setDeviceInputs(prev => ({ ...prev, [newMesa.id]: newMesa.dispositivo_id || '' }));
     }
   }
 
@@ -56,7 +59,7 @@ export function AdminMesas() {
       toast.error('Error al vincular: ' + error.message);
     } else {
       toast.success(deviceId ? 'Dispositivo vinculado' : 'Dispositivo desvinculado');
-      loadMesas();
+      loadMesas(); // Reload to reflect change
     }
   }
 
@@ -66,14 +69,14 @@ export function AdminMesas() {
       toast.error('Error al desvincular: ' + error.message);
     } else {
       toast.success('Dispositivo desvinculado');
-      loadMesas();
+      loadMesas(); // Reload to reflect change
     }
   }
 
   async function toggleMesa(mesa: Mesa) {
     const { error } = await supabase.from('mesas').update({ activa: !mesa.activa }).eq('id', mesa.id);
     if (error) toast.error('Error al cambiar estado: ' + error.message);
-    else loadMesas();
+    else loadMesas(); // Reload to reflect change
   }
 
   async function deleteMesa(id: string) {
@@ -83,7 +86,8 @@ export function AdminMesas() {
       toast.error('Error al eliminar: ' + error.message);
     } else {
       toast.success('Mesa eliminada');
-      loadMesas();
+      // Remove from state without full reload
+      setMesas(prevMesas => prevMesas.filter(m => m.id !== id));
     }
   }
 
