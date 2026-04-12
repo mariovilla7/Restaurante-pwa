@@ -34,6 +34,11 @@ export default function LoginPage() {
       navigate('/mesa');
     } else {
       toast.error('No tienes un rol asignado. Contacta al administrador.');
+      // --- PASO DE DEPURACIÓN ---
+      // Mostramos en la consola del navegador qué información del usuario estamos recibiendo.
+      // Así podemos ver si el rol realmente no está llegando.
+      console.log('DEBUG: Datos del usuario al fallar el login por rol:', signInData.user);
+      // --- FIN DEL PASO DE DEPURACIÓN ---
       await supabase.auth.signOut();
     }
   }
