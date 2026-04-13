@@ -2,29 +2,20 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Mesa } from '@/types/database';
 import { toast } from 'sonner';
-import { Monitor, Trash2, Link, Unlink } from 'lucide-react';
+import { Trash2, QrCode, Copy } from 'lucide-react';
 
 export function AdminMesas() {
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [loading, setLoading] = useState(true);
   const [newMesaNumero, setNewMesaNumero] = useState('');
-  const [newMesaDeviceId, setNewMesaDeviceId] = useState('');
-  const [deviceInputs, setDeviceInputs] = useState<Record<string, string>>({});
 
   useEffect(() => { loadMesas(); }, []);
 
   async function loadMesas() {
     setLoading(true);
     const { data, error } = await supabase.from('mesas').select('*').order('numero');
-    
-    if (error) {
-      toast.error('Error al cargar las mesas: ' + error.message);
-    } else if (data) {
-      setMesas(data);
-      const inputs: Record<string, string> = {};
-      data.forEach(m => { inputs[m.id] = m.dispositivo_id || ''; });
-      setDeviceInputs(inputs);
-    }
+    if (error) toast.error('Error al cargar las mesas: ' + error.message);
+    else if (data) setMesas(data);
     setLoading(false);
   }
 
@@ -33,65 +24,48 @@ export function AdminMesas() {
     if (!num || num <= 0) { toast.error('Número de mesa inválido'); return; }
     if (mesas.some(m => m.numero === num)) { toast.error('Ya existe esa mesa'); return; }
 
-    const deviceId = newMesaDeviceId.trim();
-    const newMesaData = { numero: num, activa: true, dispositivo_id: deviceId || null };
-
-    const { data: newMesa, error } = await supabase.from('mesas').insert(newMesaData).select().single();
+    const { data: newMesa, error } = await supabase
+      .from('mesas')
+      .insert({ numero: num, activa: true })
+      .select()
+      .single();
 
     if (error) {
       toast.error('Error al crear la mesa: ' + error.message);
     } else if (newMesa) {
       setNewMesaNumero('');
-      setNewMesaDeviceId('');
-      toast.success(`Mesa ${num} creada` + (deviceId ? ' y vinculada.' : '.'));
-      
-      setMesas(prevMesas => [...prevMesas, newMesa].sort((a, b) => a.numero - b.numero));
-      setDeviceInputs(prev => ({ ...prev, [newMesa.id]: newMesa.dispositivo_id || '' }));
+      toast.success(`Mesa ${num} creada`);
+      setMesas(prev => [...prev, newMesa].sort((a, b) => a.numero - b.numero));
     }
   }
 
-  async function assignDevice(mesaId: string) {
-    const deviceId = (deviceInputs[mesaId] || '').trim();
-    const { error } = await supabase.from('mesas').update({ dispositivo_id: deviceId || null }).eq('id', mesaId);
-    
-    if (error) {
-      toast.error('Error al vincular: ' + error.message);
-    } else {
-      toast.success(deviceId ? 'Dispositivo vinculado' : 'Dispositivo desvinculado');
-      loadMesas();
-    }
+  function getMesaUrl(numero: number) {
+    return `${window.location.origin}/mesa/${numero}`;
   }
 
-  async function unlinkDevice(mesaId: string) {
-    const { error } = await supabase.from('mesas').update({ dispositivo_id: null }).eq('id', mesaId);
-    if (error) {
-      toast.error('Error al desvincular: ' + error.message);
-    } else {
-      toast.success('Dispositivo desvinculado');
-      loadMesas();
-    }
+  function copyUrl(numero: number) {
+    navigator.clipboard.writeText(getMesaUrl(numero));
+    toast.success('URL copiada. Genera un QR con esta URL.');
   }
 
   async function toggleMesa(mesa: Mesa) {
     const { error } = await supabase.from('mesas').update({ activa: !mesa.activa }).eq('id', mesa.id);
-    if (error) toast.error('Error al cambiar estado: ' + error.message);
+    if (error) toast.error('Error: ' + error.message);
     else loadMesas();
   }
 
   async function deleteMesa(id: string) {
-    if (!confirm('¿Seguro que quieres eliminar esta mesa? Esta acción no se puede deshacer.')) return;
-    
+    if (!confirm('¿Seguro que quieres eliminar esta mesa?')) return;
     const { error } = await supabase.from('mesas').delete().eq('id', id);
-
     if (error) {
-      if (error.code === '23503') { // Foreign key violation
-        toast.error('No se puede eliminar la mesa porque tiene pedidos asociados. Márcala como "Inactiva" en su lugar.', { duration: 8000 });
+      if (error.code === '23503') {
+        toast.error('No se puede eliminar: tiene pedidos asociados. Márcala como inactiva.', { duration: 8000 });
       } else {
-        toast.error('Error al eliminar la mesa: ' + error.message);
+        toast.error('Error: ' + error.message);
       }
     } else {
       toast.success('Mesa eliminada');
-      setMesas(prevMesas => prevMesas.filter(m => m.id !== id));
+      setMesas(prev => prev.filter(m => m.id !== id));
     }
   }
 
@@ -102,53 +76,33 @@ export function AdminMesas() {
       <h2 className="text-xl sm:text-2xl font-bold text-foreground">Gestión de Mesas</h2>
 
       <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-sm text-foreground">
-        <p className="font-semibold mb-1">¿Cómo vincular un dispositivo?</p>
-        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-          <li>Abre la aplicación en la tablet del cliente para ver su ID de Dispositivo.</li>
-          <li>Pégalo en el campo correspondiente de la mesa que quieras vincular.</li>
-          <li>Pulsa el botón <strong>Vincular</strong>.</li>
-        </ol>
+        <p className="font-semibold mb-1">Sistema de QR Estático</p>
+        <p className="text-muted-foreground">
+          Cada mesa tiene una URL fija (ej: <code>/mesa/5</code>). Genera un código QR con esa URL e imprímelo en la mesa. 
+          Los clientes escanean y acceden directamente al menú. La sesión expira automáticamente tras 3 horas de inactividad.
+        </p>
       </div>
 
+      {/* Add mesa form */}
       <div className="bg-card rounded-lg border p-4 space-y-4">
         <h3 className="font-semibold text-lg">Añadir Nueva Mesa</h3>
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium text-foreground">Número de Mesa <span className="text-muted-foreground font-normal">(obligatorio)</span></label>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={newMesaNumero}
-              onChange={e => setNewMesaNumero(e.target.value.replace(/[^0-9]/g, ''))}
-              onPaste={e => {
-                const pasted = e.clipboardData.getData('text');
-                if (pasted.includes('-') || /[a-zA-Z]/.test(pasted)) {
-                  e.preventDefault();
-                  toast.error('Estás pegando un ID en el campo de número. Pégalo en el campo de ID, a la derecha.', { duration: 8000 });
-                  setNewMesaDeviceId(pasted);
-                }
-              }}
-              placeholder="Ej: 1"
-              className="mt-1 w-full border rounded-lg px-3 py-2 bg-background text-foreground"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground">ID de Dispositivo <span className="text-muted-foreground font-normal">(opcional)</span></label>
-            <input
-              type="text"
-              value={newMesaDeviceId}
-              onChange={e => setNewMesaDeviceId(e.target.value)}
-              placeholder="Pegar ID aquí..."
-              className="mt-1 w-full border rounded-lg px-3 py-2 bg-background text-foreground font-mono"
-            />
-          </div>
+        <div className="flex gap-3">
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={newMesaNumero}
+            onChange={e => setNewMesaNumero(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder="Número de mesa (ej: 1)"
+            className="flex-1 border rounded-lg px-3 py-2 bg-background text-foreground"
+          />
+          <button onClick={addMesa} className="bg-primary text-primary-foreground px-6 py-2 rounded-lg font-medium touch-target">
+            Añadir
+          </button>
         </div>
-        <button onClick={addMesa} className="w-full bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium touch-target whitespace-nowrap">
-          Añadir Mesa
-        </button>
       </div>
 
+      {/* Mesas grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {mesas.map(mesa => (
           <div key={mesa.id} className={`bg-card rounded-lg border p-4 ${!mesa.activa ? 'opacity-50' : ''}`}>
@@ -161,7 +115,7 @@ export function AdminMesas() {
                 >
                   {mesa.activa ? 'Activa' : 'Inactiva'}
                 </button>
-                <button onClick={() => deleteMesa(mesa.id)} className="p-1 text-destructive hover:opacity-70" title="Eliminar mesa">
+                <button onClick={() => deleteMesa(mesa.id)} className="p-1 text-destructive hover:opacity-70">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -169,32 +123,14 @@ export function AdminMesas() {
 
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Monitor className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">
-                  {mesa.dispositivo_id ? `Vinculado: ${mesa.dispositivo_id.slice(0, 12)}...` : 'Sin dispositivo'}
-                </span>
-                {mesa.dispositivo_id && (
-                  <button onClick={() => unlinkDevice(mesa.id)} className="ml-auto text-destructive hover:opacity-70 flex-shrink-0" title="Desvincular">
-                    <Unlink className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-
-              <label className="text-xs font-medium text-muted-foreground">ID de dispositivo (pegar UUID aquí)</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Ej: 0c931ba7-3fbe-4984-..."
-                  value={deviceInputs[mesa.id] || ''}
-                  onChange={e => setDeviceInputs(prev => ({ ...prev, [mesa.id]: e.target.value }))}
-                  className="flex-1 border rounded-md px-3 py-2 text-sm bg-background text-foreground font-mono min-w-0"
-                />
+                <QrCode className="w-4 h-4 flex-shrink-0" />
+                <code className="text-xs truncate flex-1">/mesa/{mesa.numero}</code>
                 <button
-                  onClick={() => assignDevice(mesa.id)}
-                  className="bg-primary text-primary-foreground px-3 py-2 rounded-md text-sm font-medium touch-target flex items-center gap-1 flex-shrink-0"
+                  onClick={() => copyUrl(mesa.numero)}
+                  className="text-primary hover:opacity-70 flex-shrink-0"
+                  title="Copiar URL para QR"
                 >
-                  <Link className="w-4 h-4" />
-                  <span className="hidden sm:inline">Vincular</span>
+                  <Copy className="w-4 h-4" />
                 </button>
               </div>
             </div>
