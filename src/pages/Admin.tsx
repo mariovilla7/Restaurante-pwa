@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { AdminMenu } from '@/components/admin/AdminMenu';
 import { AdminMesas } from '@/components/admin/AdminMesas';
 import { AdminPedidos } from '@/components/admin/AdminPedidos';
 import { AdminUsers } from '@/components/admin/AdminUsers';
-import { toast } from 'sonner';
 import { UtensilsCrossed, Table, ClipboardList, LogOut, Menu, X, Users } from 'lucide-react';
 
 type Tab = 'menu' | 'mesas' | 'pedidos' | 'usuarios';
@@ -14,23 +13,6 @@ export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('menu');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    const checkSessionAndRole = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        navigate('/login', { replace: true });
-        return;
-      }
-
-      // Verify user has admin role from metadata
-      if (session.user.app_metadata?.role !== 'admin') {
-        toast.error('Acceso no autorizado.');
-        navigate('/login', { replace: true });
-      }
-    };
-    checkSessionAndRole();
-  }, [navigate]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
