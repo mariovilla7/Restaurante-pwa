@@ -7,27 +7,10 @@ import MesaPage from "./pages/Mesa";
 import CocinaPage from "./pages/Cocina";
 import AdminPage from "./pages/Admin";
 import LoginPage from "./pages/Login";
-import DeviceSetup from "./pages/DeviceSetup";
 import NotFound from "./pages/NotFound";
-import { isDeviceAssigned } from "./lib/device";
-import { useState } from "react";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
-
-function MesaRoute() {
-  const [assigned, setAssigned] = useState(isDeviceAssigned());
-
-  if (!assigned) {
-    return <DeviceSetup onAssigned={() => setAssigned(true)} />;
-  }
-  
-  // Cuando la MesaPage detecte que ha sido desasignada, llamará a esta función.
-  const handleUnassigned = () => {
-    setAssigned(false);
-  };
-
-  return <MesaPage onUnassigned={handleUnassigned} />;
-}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -37,9 +20,18 @@ const App = () => (
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/" element={<Navigate to="/mesa" replace />} />
-          <Route path="/mesa" element={<MesaRoute />} />
-          <Route path="/cocina" element={<CocinaPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/mesa/:numero" element={<MesaPage />} />
+          <Route path="/mesa" element={<MesaPage />} />
+          <Route path="/cocina" element={
+            <ProtectedRoute allowedRoles={['cocina', 'admin']}>
+              <CocinaPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminPage />
+            </ProtectedRoute>
+          } />
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
