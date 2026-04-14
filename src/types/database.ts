@@ -1,4 +1,4 @@
-export type OrderStatus = 'en_espera' | 'preparando' | 'listo' | 'servido';
+export type OrderStatus = 'en_espera' | 'preparando' | 'listo' | 'servido' | 'pagado';
 export type OrderItemStatus = 'pendiente' | 'en_cocina' | 'listo';
 export type NotificationType = 'camarero' | 'cuenta';
 export type UserRole = 'admin' | 'cocina' | 'mesa';
