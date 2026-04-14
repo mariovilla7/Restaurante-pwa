@@ -4,9 +4,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { getMesaSession, setMesaSession, clearMesaSession, refreshMesaSession } from '@/lib/mesaSession';
 import { useSharedCart } from '@/hooks/useSharedCart';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import type { Mesa, Plato, Categoria } from '@/types/database';
+import type { Mesa, Plato, Categoria, Pedido, PedidoItem } from '@/types/database';
 import { Wifi, WifiOff, Loader2, Hand, Receipt, Trash2, Minus, Plus, ShoppingCart, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
+import { OrderStatus } from '@/components/mesa/OrderStatus';
 
 export default function MesaPage() {
   const { numero } = useParams<{ numero: string }>();
@@ -15,38 +16,51 @@ export default function MesaPage() {
   const [platos, setPlatos] = useState<Plato[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sessionExpired, setSessionExpired] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [cartOpen, setCartOpen] = useState(false);
+  const [activePedidos, setActivePedidos] = useState<(Pedido & { pedido_items: PedidoItem[] })[]>([]);
 
   const cart = useSharedCart(mesa?.id ?? null);
 
-  // Initialize mesa from URL or session
+  // Initialize mesa: require valid session from ValidarMesa
   useEffect(() => {
     async function init() {
-      // If we have a numero from URL, look up the mesa
+      const session = getMesaSession();
+
       if (numero) {
         const num = parseInt(numero);
-        if (isNaN(num)) { setLoading(false); return; }
+        if (isNaN(num)) { setAccessDenied(true); setLoading(false); return; }
 
+        // Must have a valid session matching this mesa numero
+        if (!session || session.mesaNumero !== num) {
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+
+        // Verify mesa still exists and is active
         const { data } = await supabase
           .from('mesas')
           .select('*')
-          .eq('numero', num)
+          .eq('id', session.mesaId)
           .eq('activa', true)
           .maybeSingle();
 
         if (data) {
           setMesa(data);
-          setMesaSession(data.id, data.numero);
+          refreshMesaSession();
           loadMenu();
+          loadActivePedidos(data.id);
+        } else {
+          clearMesaSession();
+          setAccessDenied(true);
         }
         setLoading(false);
         return;
       }
 
-      // No URL param — check sessionStorage
-      const session = getMesaSession();
+      // No URL param — check session
       if (session) {
         const { data } = await supabase
           .from('mesas')
@@ -59,12 +73,13 @@ export default function MesaPage() {
           setMesa(data);
           refreshMesaSession();
           loadMenu();
+          loadActivePedidos(data.id);
         } else {
           clearMesaSession();
-          setSessionExpired(true);
+          setAccessDenied(true);
         }
       } else {
-        setSessionExpired(true);
+        setAccessDenied(true);
       }
       setLoading(false);
     }
@@ -81,6 +96,17 @@ export default function MesaPage() {
       if (catRes.data.length > 0) setActiveCategory(catRes.data[0].id);
     }
     if (platRes.data) setPlatos(platRes.data);
+  }
+
+  async function loadActivePedidos(mesaId: string) {
+    const { data } = await supabase
+      .from('pedidos')
+      .select('*, pedido_items(*, plato:platos(*))')
+      .eq('mesa_id', mesaId)
+      .not('estado', 'eq', 'pagado')
+      .order('created_at', { ascending: false })
+      .limit(5);
+    if (data) setActivePedidos(data as any);
   }
 
   // Refresh activity on interaction
@@ -103,17 +129,18 @@ export default function MesaPage() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
 
-  // Listen for platos changes (availability updates from kitchen)
-  const handlePlatosChange = useCallback(() => {
-    loadMenu();
-  }, []);
+  const handlePlatosChange = useCallback(() => { loadMenu(); }, []);
   useRealtimeSubscription('platos', '*', handlePlatosChange);
 
-  // Place order
+  const handlePedidosChange = useCallback(() => {
+    if (mesa) loadActivePedidos(mesa.id);
+  }, [mesa]);
+  useRealtimeSubscription('pedidos', '*', handlePedidosChange);
+  useRealtimeSubscription('pedido_items', '*', handlePedidosChange);
+
   async function placeOrder() {
     if (cart.items.length === 0 || !mesa) return;
 
-    // Create pedido
     const { data: pedido, error: pedidoError } = await supabase
       .from('pedidos')
       .insert({ mesa_id: mesa.id, total: cart.total, estado: 'en_espera' })
@@ -125,7 +152,6 @@ export default function MesaPage() {
       return;
     }
 
-    // Create pedido_items from cart
     const pedidoItems = cart.items.map(item => ({
       pedido_id: pedido.id,
       plato_id: item.plato_id,
@@ -140,20 +166,18 @@ export default function MesaPage() {
       return;
     }
 
-    // Clear shared cart for all devices at this mesa
     await cart.clearCart();
     setCartOpen(false);
+    loadActivePedidos(mesa.id);
     toast.success('¡Pedido enviado! La cocina ya lo está preparando. 🍳');
   }
 
-  // Call waiter
   async function callWaiter() {
     if (!mesa) return;
     await supabase.from('notificaciones').insert({ mesa_id: mesa.id, tipo: 'camarero' });
     toast.success('Camarero notificado 🔔');
   }
 
-  // Request bill
   async function requestBill() {
     if (!mesa) return;
     await supabase.from('notificaciones').insert({ mesa_id: mesa.id, tipo: 'cuenta' });
@@ -171,15 +195,14 @@ export default function MesaPage() {
     );
   }
 
-  if (sessionExpired || !mesa) {
+  if (accessDenied || !mesa) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background p-6 text-center">
         <div className="bg-card p-8 rounded-xl shadow-lg border max-w-sm w-full space-y-4">
           <QrCode className="w-16 h-16 text-primary mx-auto" />
-          <h1 className="text-2xl font-bold text-foreground">Escanea el QR de tu mesa</h1>
+          <h1 className="text-2xl font-bold text-foreground">Acceso denegado</h1>
           <p className="text-muted-foreground">
-            {sessionExpired ? 'Tu sesión ha expirado.' : 'No se encontró esta mesa.'}
-            {' '}Escanea el código QR en tu mesa para continuar.
+            Por favor, escanea el código QR de tu mesa para acceder al menú.
           </p>
         </div>
       </div>
@@ -208,6 +231,15 @@ export default function MesaPage() {
           </button>
         </div>
       </header>
+
+      {/* Active orders status */}
+      {activePedidos.length > 0 && (
+        <div className="flex-shrink-0">
+          {activePedidos.map(p => (
+            <OrderStatus key={p.id} pedido={p} items={p.pedido_items} />
+          ))}
+        </div>
+      )}
 
       {/* Category Tabs */}
       {categorias.length > 0 && (
@@ -255,7 +287,7 @@ export default function MesaPage() {
         )}
       </main>
 
-      {/* Cart Panel (slide from bottom on mobile) */}
+      {/* Cart Panel */}
       {cartOpen && (
         <div className="border-t bg-card flex-shrink-0 max-h-[50vh] flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b">
@@ -278,17 +310,11 @@ export default function MesaPage() {
                     </button>
                   </div>
                   <div className="flex items-center gap-3 mt-2">
-                    <button
-                      onClick={() => cart.updateQuantity(item.id, item.cantidad - 1)}
-                      className="bg-card border rounded-lg w-8 h-8 flex items-center justify-center touch-target"
-                    >
+                    <button onClick={() => cart.updateQuantity(item.id, item.cantidad - 1)} className="bg-card border rounded-lg w-8 h-8 flex items-center justify-center touch-target">
                       <Minus className="w-3 h-3" />
                     </button>
                     <span className="font-bold">{item.cantidad}</span>
-                    <button
-                      onClick={() => cart.updateQuantity(item.id, item.cantidad + 1)}
-                      className="bg-card border rounded-lg w-8 h-8 flex items-center justify-center touch-target"
-                    >
+                    <button onClick={() => cart.updateQuantity(item.id, item.cantidad + 1)} className="bg-card border rounded-lg w-8 h-8 flex items-center justify-center touch-target">
                       <Plus className="w-3 h-3" />
                     </button>
                     <span className="ml-auto font-bold">{((item.plato?.precio ?? 0) * item.cantidad).toFixed(2)}€</span>
@@ -307,10 +333,7 @@ export default function MesaPage() {
           {cart.items.length > 0 && (
             <div className="border-t px-4 py-3 flex items-center justify-between">
               <span className="text-lg font-bold">Total: {cart.total.toFixed(2)}€</span>
-              <button
-                onClick={placeOrder}
-                className="bg-success text-success-foreground font-bold px-6 py-3 rounded-lg touch-target"
-              >
+              <button onClick={placeOrder} className="bg-success text-success-foreground font-bold px-6 py-3 rounded-lg touch-target">
                 Confirmar Pedido
               </button>
             </div>

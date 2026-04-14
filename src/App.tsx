@@ -7,6 +7,7 @@ import MesaPage from "./pages/Mesa";
 import CocinaPage from "./pages/Cocina";
 import AdminPage from "./pages/Admin";
 import LoginPage from "./pages/Login";
+import ValidarMesaPage from "./pages/ValidarMesa";
 import NotFound from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -20,6 +21,7 @@ const App = () => (
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/" element={<Navigate to="/mesa" replace />} />
+          <Route path="/validar-mesa/:id" element={<ValidarMesaPage />} />
           <Route path="/mesa/:numero" element={<MesaPage />} />
           <Route path="/mesa" element={<MesaPage />} />
           <Route path="/cocina" element={
