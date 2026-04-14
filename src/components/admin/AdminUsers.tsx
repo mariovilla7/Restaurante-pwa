@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { UserRole } from '@/types/database';
+import { Trash2 } from 'lucide-react';
 
-// Define a more specific type for the user list
 interface ManagedUser {
   id: string;
   email?: string;
@@ -12,20 +12,16 @@ interface ManagedUser {
 }
 
 export function AdminUsers() {
-  // State for creating a new user
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<UserRole>('cocina');
   const [createLoading, setCreateLoading] = useState(false);
-
-  // State for listing and editing users
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [listLoading, setListLoading] = useState(true);
-  const [editLoading, setEditLoading] = useState<string | null>(null); // Store ID of user being edited
+  const [editLoading, setEditLoading] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
+  useEffect(() => { loadUsers(); }, []);
 
   async function loadUsers() {
     setListLoading(true);
@@ -41,27 +37,20 @@ export function AdminUsers() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateLoading(true);
-    // Log para asegurar que el rol se envía correctamente.
-    console.log('Enviando para crear usuario:', {
-      email: newEmail,
-      passwordLength: newPassword.length,
-      role: newRole,
-    });
     try {
       const { error } = await supabase.functions.invoke('create-user', {
         body: { email: newEmail, password: newPassword, role: newRole },
       });
-
       if (error) {
         toast.error(error.message);
       } else {
         toast.success('Usuario creado con éxito.');
         setNewEmail('');
         setNewPassword('');
-        await loadUsers(); // Refresh the list
+        await loadUsers();
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Ha ocurrido un error inesperado.';
+      const message = err instanceof Error ? err.message : 'Error inesperado.';
       toast.error(`Error al crear usuario: ${message}`);
     } finally {
       setCreateLoading(false);
@@ -72,31 +61,44 @@ export function AdminUsers() {
     setEditLoading(userId);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-
       const { error } = await supabase.functions.invoke('update-user-role', {
         body: { userId, newRole: role },
       });
-
       if (error) {
         toast.error(`Error al actualizar rol: ${error.message}`);
       } else {
-        toast.success('Rol de usuario actualizado.');
-        // Update local state for immediate feedback
-        setUsers(prevUsers =>
-          prevUsers.map(u => (u.id === userId ? { ...u, role } : u))
-        );
-
-        // If the admin updated their own role, refresh the session to get the new token
+        toast.success('Rol actualizado.');
+        setUsers(prev => prev.map(u => (u.id === userId ? { ...u, role } : u)));
         if (currentUser && currentUser.id === userId) {
           await supabase.auth.refreshSession();
-          toast.info('Tu rol ha sido actualizado. Tu sesión ha sido refrescada.');
         }
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Ha ocurrido un error inesperado.';
-      toast.error(`Error al actualizar rol: ${message}`);
+      const message = err instanceof Error ? err.message : 'Error inesperado.';
+      toast.error(`Error: ${message}`);
     } finally {
       setEditLoading(null);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, email?: string) => {
+    if (!confirm(`¿Eliminar permanentemente al usuario ${email || userId}?`)) return;
+    setDeleteLoading(userId);
+    try {
+      const { error } = await supabase.functions.invoke('delete-user', {
+        body: { userId },
+      });
+      if (error) {
+        toast.error(`Error al eliminar: ${error.message}`);
+      } else {
+        toast.success('Usuario eliminado.');
+        setUsers(prev => prev.filter(u => u.id !== userId));
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error inesperado.';
+      toast.error(`Error: ${message}`);
+    } finally {
+      setDeleteLoading(null);
     }
   };
 
@@ -113,23 +115,11 @@ export function AdminUsers() {
           <h3 className="text-lg font-semibold">Crear Nuevo Usuario</h3>
           <div>
             <label className="text-sm font-medium text-foreground">Email</label>
-            <input
-              type="email"
-              value={newEmail}
-              onChange={e => setNewEmail(e.target.value)}
-              className="mt-1 w-full bg-background border rounded-lg px-4 py-3 text-foreground"
-              required
-            />
+            <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} className="mt-1 w-full bg-background border rounded-lg px-4 py-3 text-foreground" required />
           </div>
           <div>
             <label className="text-sm font-medium text-foreground">Contraseña</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={e => setNewPassword(e.target.value)}
-              className="mt-1 w-full bg-background border rounded-lg px-4 py-3 text-foreground"
-              required
-            />
+            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="mt-1 w-full bg-background border rounded-lg px-4 py-3 text-foreground" required />
           </div>
           <div>
             <label className="text-sm font-medium text-foreground">Rol</label>
@@ -150,6 +140,8 @@ export function AdminUsers() {
         <h3 className="text-lg font-semibold mb-4">Usuarios Existentes</h3>
         {listLoading ? (
           <p className="text-muted-foreground">Cargando usuarios...</p>
+        ) : users.length === 0 ? (
+          <p className="text-muted-foreground">No hay usuarios registrados.</p>
         ) : (
           <div className="space-y-2">
             {users.map(user => (
@@ -173,6 +165,18 @@ export function AdminUsers() {
                     <option value="mesa">Mesa</option>
                   </select>
                   {editLoading === user.id && <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />}
+                  <button
+                    onClick={() => handleDeleteUser(user.id, user.email)}
+                    disabled={deleteLoading === user.id}
+                    className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors disabled:opacity-50"
+                    title="Eliminar usuario"
+                  >
+                    {deleteLoading === user.id ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-destructive" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                  </button>
                 </div>
               </div>
             ))}

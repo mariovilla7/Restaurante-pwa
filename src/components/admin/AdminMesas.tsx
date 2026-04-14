@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Mesa } from '@/types/database';
 import { toast } from 'sonner';
-import { Trash2, QrCode, Copy } from 'lucide-react';
+import { Trash2, QrCode, Copy, XCircle } from 'lucide-react';
 
 export function AdminMesas() {
   const [mesas, setMesas] = useState<Mesa[]>([]);
@@ -39,12 +39,12 @@ export function AdminMesas() {
     }
   }
 
-  function getMesaUrl(numero: number) {
-    return `${window.location.origin}/mesa/${numero}`;
+  function getQrUrl(mesaId: string) {
+    return `${window.location.origin}/validar-mesa/${mesaId}`;
   }
 
-  function copyUrl(numero: number) {
-    navigator.clipboard.writeText(getMesaUrl(numero));
+  function copyUrl(mesaId: string) {
+    navigator.clipboard.writeText(getQrUrl(mesaId));
     toast.success('URL copiada. Genera un QR con esta URL.');
   }
 
@@ -69,6 +69,22 @@ export function AdminMesas() {
     }
   }
 
+  async function cerrarMesa(mesa: Mesa) {
+    if (!confirm(`¿Cerrar Mesa ${mesa.numero}? Se vaciará el carrito y se archivarán los pedidos como "pagado".`)) return;
+
+    const [cartRes, pedidoRes] = await Promise.all([
+      supabase.from('carrito_items').delete().eq('mesa_id', mesa.id),
+      supabase.from('pedidos').update({ estado: 'pagado' }).eq('mesa_id', mesa.id).neq('estado', 'pagado'),
+    ]);
+
+    if (cartRes.error) toast.error('Error limpiando carrito: ' + cartRes.error.message);
+    if (pedidoRes.error) toast.error('Error archivando pedidos: ' + pedidoRes.error.message);
+
+    if (!cartRes.error && !pedidoRes.error) {
+      toast.success(`Mesa ${mesa.numero} cerrada. Carrito y pedidos archivados.`);
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
 
   return (
@@ -76,10 +92,10 @@ export function AdminMesas() {
       <h2 className="text-xl sm:text-2xl font-bold text-foreground">Gestión de Mesas</h2>
 
       <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-sm text-foreground">
-        <p className="font-semibold mb-1">Sistema de QR Estático</p>
+        <p className="font-semibold mb-1">Sistema de QR Seguro</p>
         <p className="text-muted-foreground">
-          Cada mesa tiene una URL fija (ej: <code>/mesa/5</code>). Genera un código QR con esa URL e imprímelo en la mesa. 
-          Los clientes escanean y acceden directamente al menú. La sesión expira automáticamente tras 3 horas de inactividad.
+          Cada mesa tiene una URL segura con su UUID (no el número). El QR apunta a <code>/validar-mesa/UUID</code>. 
+          Al escanearlo, se valida que la mesa existe y está activa, se crea una sesión temporal de 3h y se redirige al menú.
         </p>
       </div>
 
@@ -124,15 +140,25 @@ export function AdminMesas() {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <QrCode className="w-4 h-4 flex-shrink-0" />
-                <code className="text-xs truncate flex-1">/mesa/{mesa.numero}</code>
+                <code className="text-xs truncate flex-1">/validar-mesa/{mesa.id.slice(0, 8)}...</code>
                 <button
-                  onClick={() => copyUrl(mesa.numero)}
+                  onClick={() => copyUrl(mesa.id)}
                   className="text-primary hover:opacity-70 flex-shrink-0"
                   title="Copiar URL para QR"
                 >
                   <Copy className="w-4 h-4" />
                 </button>
               </div>
+
+              {mesa.activa && (
+                <button
+                  onClick={() => cerrarMesa(mesa)}
+                  className="w-full mt-2 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg px-3 py-2 text-sm font-medium hover:bg-destructive/20 transition-colors flex items-center justify-center gap-2"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Cobrar y Liberar Mesa
+                </button>
+              )}
             </div>
           </div>
         ))}

@@ -4,7 +4,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import type { Pedido, Notificacion } from '@/types/database';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Bell, Receipt, CheckCircle } from 'lucide-react';
+import { Bell, Receipt, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function AdminPedidos() {
@@ -16,7 +16,7 @@ export function AdminPedidos() {
 
   async function loadData() {
     const [pedRes, notRes] = await Promise.all([
-      supabase.from('pedidos').select('*, mesa:mesas(*), pedido_items(*, plato:platos(*))').order('created_at', { ascending: false }).limit(50),
+      supabase.from('pedidos').select('*, mesa:mesas(*), pedido_items(*, plato:platos(*))').neq('estado', 'pagado').order('created_at', { ascending: false }).limit(50),
       supabase.from('notificaciones').select('*, mesa:mesas(*)').eq('atendida', false).order('created_at', { ascending: false }),
     ]);
     if (pedRes.data) setPedidos(pedRes.data);
@@ -28,9 +28,19 @@ export function AdminPedidos() {
   useRealtimeSubscription('pedidos', '*', handleChange);
   useRealtimeSubscription('notificaciones', '*', handleChange);
 
-  async function markNotificationHandled(id: string) {
-    await supabase.from('notificaciones').update({ atendida: true }).eq('id', id);
-    toast.success('Notificación atendida');
+  async function markNotificationHandled(n: any) {
+    await supabase.from('notificaciones').update({ atendida: true }).eq('id', n.id);
+
+    // If "cuenta" notification, auto-close the mesa
+    if (n.tipo === 'cuenta' && n.mesa_id) {
+      await Promise.all([
+        supabase.from('carrito_items').delete().eq('mesa_id', n.mesa_id),
+        supabase.from('pedidos').update({ estado: 'pagado' }).eq('mesa_id', n.mesa_id).neq('estado', 'pagado'),
+      ]);
+      toast.success(`Mesa ${n.mesa?.numero || '?'} cobrada y liberada automáticamente.`);
+    } else {
+      toast.success('Notificación atendida');
+    }
     loadData();
   }
 
@@ -62,15 +72,19 @@ export function AdminPedidos() {
                 {n.tipo === 'camarero' ? <Bell className="w-5 h-5 text-warning" /> : <Receipt className="w-5 h-5 text-primary" />}
                 <div>
                   <p className="font-semibold text-foreground">
-                    Mesa {n.mesa?.numero}: {n.tipo === 'camarero' ? 'Llama al camarero' : 'Pide la cuenta'}
+                    Mesa {n.mesa?.numero}: {n.tipo === 'camarero' ? 'Llama al camarero' : '🧾 Pide la cuenta'}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(n.created_at), { locale: es, addSuffix: true })}
                   </p>
                 </div>
               </div>
-              <button onClick={() => markNotificationHandled(n.id)} className="bg-success text-success-foreground px-3 py-2 rounded-md text-sm font-medium touch-target">
-                <CheckCircle className="w-4 h-4 inline mr-1" /> Atender
+              <button onClick={() => markNotificationHandled(n)} className="bg-success text-success-foreground px-3 py-2 rounded-md text-sm font-medium touch-target">
+                {n.tipo === 'cuenta' ? (
+                  <><XCircle className="w-4 h-4 inline mr-1" /> Cobrar y Cerrar</>
+                ) : (
+                  <><CheckCircle className="w-4 h-4 inline mr-1" /> Atender</>
+                )}
               </button>
             </div>
           ))}
@@ -78,43 +92,47 @@ export function AdminPedidos() {
       )}
 
       {/* Orders */}
-      <h2 className="text-2xl font-bold text-foreground">Pedidos</h2>
-      <div className="space-y-3">
-        {pedidos.map(pedido => (
-          <div key={pedido.id} className="bg-card rounded-lg border p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3">
-                <h4 className="font-bold text-foreground">Mesa {pedido.mesa?.numero || '?'}</h4>
-                <span className={`text-xs px-2 py-1 rounded-full ${statusColors[pedido.estado]}`}>
-                  {pedido.estado.replace('_', ' ')}
-                </span>
+      <h2 className="text-2xl font-bold text-foreground">Pedidos Activos</h2>
+      {pedidos.length === 0 ? (
+        <p className="text-muted-foreground text-center py-8">No hay pedidos activos.</p>
+      ) : (
+        <div className="space-y-3">
+          {pedidos.map(pedido => (
+            <div key={pedido.id} className="bg-card rounded-lg border p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <h4 className="font-bold text-foreground">Mesa {pedido.mesa?.numero || '?'}</h4>
+                  <span className={`text-xs px-2 py-1 rounded-full ${statusColors[pedido.estado] || ''}`}>
+                    {pedido.estado.replace('_', ' ')}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    {formatDistanceToNow(new Date(pedido.created_at), { locale: es, addSuffix: true })}
+                  </span>
+                  <span className="font-bold text-primary">{pedido.total?.toFixed(2)} €</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">
-                  {formatDistanceToNow(new Date(pedido.created_at), { locale: es, addSuffix: true })}
-                </span>
-                <span className="font-bold text-primary">{pedido.total?.toFixed(2)} €</span>
+              <div className="flex gap-2 flex-wrap text-sm text-muted-foreground mb-2">
+                {pedido.pedido_items?.map((item: any) => (
+                  <span key={item.id} className="bg-secondary px-2 py-1 rounded-md">
+                    {item.cantidad}x {item.plato?.nombre}
+                  </span>
+                ))}
               </div>
+              {pedido.estado !== 'servido' && (
+                <div className="flex gap-2">
+                  {pedido.estado === 'listo' && (
+                    <button onClick={() => updatePedidoStatus(pedido.id, 'servido')} className="text-sm bg-success text-success-foreground px-3 py-1 rounded-md">
+                      Marcar Servido
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="flex gap-2 flex-wrap text-sm text-muted-foreground mb-2">
-              {pedido.pedido_items?.map((item: any) => (
-                <span key={item.id} className="bg-secondary px-2 py-1 rounded-md">
-                  {item.cantidad}x {item.plato?.nombre}
-                </span>
-              ))}
-            </div>
-            {pedido.estado !== 'servido' && (
-              <div className="flex gap-2">
-                {pedido.estado === 'listo' && (
-                  <button onClick={() => updatePedidoStatus(pedido.id, 'servido')} className="text-sm bg-success text-success-foreground px-3 py-1 rounded-md">
-                    Marcar Servido
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
