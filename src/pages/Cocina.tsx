@@ -5,7 +5,7 @@ import type { Pedido, PedidoItem, Notificacion } from '@/types/database';
 import { toast } from 'sonner';
 import { formatDistanceToNow, differenceInMinutes } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChefHat, CheckCircle, Clock, Bell, Receipt, Filter, BarChart3 } from 'lucide-react';
+import { ChefHat, CheckCircle, Clock, Bell, Receipt, Filter, BarChart3, Truck } from 'lucide-react';
 
 type FullPedido = Pedido & { mesa?: any; pedido_items: (PedidoItem & { plato: any })[] };
 
@@ -28,6 +28,13 @@ function formatTimer(createdAt: string): string {
   return `${mins} min`;
 }
 
+// Sort priority: en_espera first, then preparando, then listo. Within same status, oldest first.
+const STATUS_PRIORITY: Record<string, number> = {
+  en_espera: 0,
+  preparando: 1,
+  listo: 2,
+};
+
 export default function CocinaPage() {
   const [pedidos, setPedidos] = useState<FullPedido[]>([]);
   const [notificaciones, setNotificaciones] = useState<(Notificacion & { mesa?: any })[]>([]);
@@ -44,9 +51,10 @@ export default function CocinaPage() {
   }, []);
 
   async function loadData() {
+    // Never show 'servido' or 'pagado' in main view
     const estados = filter === 'pendientes'
       ? ['en_espera', 'preparando']
-      : ['en_espera', 'preparando', 'listo', 'servido'];
+      : ['en_espera', 'preparando', 'listo'];
 
     const [pedRes, notRes] = await Promise.all([
       supabase
@@ -67,7 +75,15 @@ export default function CocinaPage() {
         toast.info('🔔 ¡Nuevo pedido recibido!');
       }
       prevCountRef.current = pedRes.data.length;
-      setPedidos(pedRes.data as any);
+
+      // Sort: en_espera first (oldest first), then preparando, then listo
+      const sorted = [...pedRes.data].sort((a: any, b: any) => {
+        const pa = STATUS_PRIORITY[a.estado] ?? 99;
+        const pb = STATUS_PRIORITY[b.estado] ?? 99;
+        if (pa !== pb) return pa - pb;
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+      setPedidos(sorted as any);
     }
     if (notRes.data) setNotificaciones(notRes.data as any);
     setLoading(false);
@@ -112,6 +128,12 @@ export default function CocinaPage() {
     if (newStatus === 'en_cocina' && pedido?.estado === 'en_espera') {
       await supabase.from('pedidos').update({ estado: 'preparando' }).eq('id', pedido.id);
     }
+    loadData();
+  }
+
+  async function updatePedidoStatus(pedidoId: string, estado: string) {
+    await supabase.from('pedidos').update({ estado }).eq('id', pedidoId);
+    toast.success(`Pedido marcado como "${estado.replace('_', ' ')}"`);
     loadData();
   }
 
@@ -238,9 +260,22 @@ export default function CocinaPage() {
                         </span>
                       </div>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {pedido.estado === 'en_espera' ? '⏳ En espera' : pedido.estado === 'preparando' ? '👨‍🍳 Preparando' : pedido.estado === 'listo' ? '✅ Listo' : '🍽️ Servido'}
-                    </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-sm text-muted-foreground">
+                        {pedido.estado === 'en_espera' ? '⏳ En espera' : pedido.estado === 'preparando' ? '👨‍🍳 Preparando' : '✅ Listo'}
+                      </p>
+                      {/* Pedido-level actions */}
+                      <div className="flex gap-1">
+                        {pedido.estado === 'listo' && (
+                          <button
+                            onClick={() => updatePedidoStatus(pedido.id, 'servido')}
+                            className="bg-success text-success-foreground text-xs px-2 py-1 rounded-md font-medium touch-target flex items-center gap-1"
+                          >
+                            <Truck className="w-3 h-3" /> Servido
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Items */}

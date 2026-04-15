@@ -51,8 +51,14 @@ export function useSharedCart(mesaId: string | null) {
 
   const addItem = useCallback(async (plato: Plato) => {
     if (!mesaId) return;
-    // Check if item already exists in cart
-    const existing = items.find(i => i.plato_id === plato.id);
+    // Always check DB for existing item to avoid stale state duplicates
+    const { data: existing } = await supabase
+      .from('carrito_items')
+      .select('id, cantidad')
+      .eq('mesa_id', mesaId)
+      .eq('plato_id', plato.id)
+      .maybeSingle();
+
     if (existing) {
       await supabase
         .from('carrito_items')
@@ -66,7 +72,7 @@ export function useSharedCart(mesaId: string | null) {
         notas: null,
       });
     }
-  }, [mesaId, items]);
+  }, [mesaId]);
 
   const removeItem = useCallback(async (itemId: string) => {
     await supabase.from('carrito_items').delete().eq('id', itemId);
