@@ -6,11 +6,12 @@ interface Props {
   items: PedidoItem[];
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; icon: any; color: string }> = {
   en_espera: { label: 'En espera', icon: Clock, color: 'bg-warning text-warning-foreground' },
   preparando: { label: 'Preparándose', icon: ChefHat, color: 'bg-primary text-primary-foreground' },
-  listo: { label: 'Listo para servir', icon: CheckCircle, color: 'bg-success text-success-foreground' },
+  listo: { label: '¡Listo para servir!', icon: CheckCircle, color: 'bg-success text-success-foreground' },
   servido: { label: 'Servido', icon: CheckCircle, color: 'bg-muted text-muted-foreground' },
+  pagado: { label: 'Pagado', icon: CheckCircle, color: 'bg-muted text-muted-foreground' },
 };
 
 export function OrderStatus({ pedido, items }: Props) {
