@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { getMesaSession, setMesaSession, clearMesaSession, refreshMesaSession } from '@/lib/mesaSession';
+import { getMesaSession, clearMesaSession, refreshMesaSession } from '@/lib/mesaSession';
 import { useSharedCart } from '@/hooks/useSharedCart';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import type { Mesa, Plato, Categoria, Pedido, PedidoItem } from '@/types/database';
-import { Wifi, WifiOff, Loader2, Hand, Receipt, Trash2, Minus, Plus, ShoppingCart, QrCode } from 'lucide-react';
+import { Wifi, WifiOff, Loader2, Trash2, Minus, Plus, ShoppingCart, QrCode, Hand, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
 import { OrderStatus } from '@/components/mesa/OrderStatus';
 
@@ -103,7 +103,7 @@ export default function MesaPage() {
       .from('pedidos')
       .select('*, pedido_items(*, plato:platos(*))')
       .eq('mesa_id', mesaId)
-      .not('estado', 'eq', 'pagado')
+      .in('estado', ['en_espera', 'preparando', 'listo'])
       .order('created_at', { ascending: false })
       .limit(5);
     if (data) setActivePedidos(data as any);
@@ -261,7 +261,7 @@ export default function MesaPage() {
       )}
 
       {/* Menu Grid */}
-      <main className="flex-1 overflow-y-auto p-4 min-h-0">
+      <main className="flex-1 overflow-y-auto p-4 pb-28 min-h-0">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {filteredPlatos.map(plato => (
             <div key={plato.id} className="bg-card border rounded-lg p-4 flex flex-col">
@@ -289,7 +289,7 @@ export default function MesaPage() {
 
       {/* Cart Panel */}
       {cartOpen && (
-        <div className="border-t bg-card flex-shrink-0 max-h-[50vh] flex flex-col">
+        <div className="mb-24 border-t bg-card flex-shrink-0 max-h-[45vh] flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b">
             <h3 className="text-lg font-bold">Tu Pedido ({cart.itemCount})</h3>
             <button onClick={() => setCartOpen(false)} className="text-muted-foreground text-sm">Cerrar</button>
@@ -342,15 +342,23 @@ export default function MesaPage() {
       )}
 
       {/* Footer actions */}
-      <footer className="bg-card border-t px-4 py-3 flex justify-around items-center flex-shrink-0">
-        <button onClick={callWaiter} className="flex flex-col items-center gap-1 text-warning touch-target">
-          <Hand className="w-6 h-6" />
-          <span className="text-xs font-medium">Camarero</span>
-        </button>
-        <button onClick={requestBill} className="flex flex-col items-center gap-1 text-primary touch-target">
-          <Receipt className="w-6 h-6" />
-          <span className="text-xs font-medium">La Cuenta</span>
-        </button>
+      <footer className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur supports-[backdrop-filter]:bg-card/80">
+        <div className="mx-auto grid max-w-3xl grid-cols-2 gap-3">
+          <button
+            onClick={callWaiter}
+            className="touch-target flex items-center justify-center gap-2 rounded-xl bg-warning text-warning-foreground py-3 font-semibold shadow-sm"
+          >
+            <Hand className="w-5 h-5" />
+            <span>Camarero</span>
+          </button>
+          <button
+            onClick={requestBill}
+            className="touch-target flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground py-3 font-semibold shadow-sm"
+          >
+            <Receipt className="w-5 h-5" />
+            <span>La Cuenta</span>
+          </button>
+        </div>
       </footer>
     </div>
   );

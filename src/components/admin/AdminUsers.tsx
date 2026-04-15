@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseKey, supabaseUrl } from '@/integrations/supabase/client';
 import { UserRole } from '@/types/database';
 import { Trash2 } from 'lucide-react';
 
@@ -29,7 +29,7 @@ export function AdminUsers() {
     if (error) {
       toast.error(`Error al cargar usuarios: ${error.message}`);
     } else if (data) {
-      setUsers(data);
+      setUsers(data.filter((user) => Boolean(user.email?.trim())));
     }
     setListLoading(false);
   }
@@ -85,15 +85,32 @@ export function AdminUsers() {
     if (!confirm(`¿Eliminar permanentemente al usuario ${email || userId}?`)) return;
     setDeleteLoading(userId);
     try {
-      const { error } = await supabase.functions.invoke('delete-user', {
-        body: { userId },
-      });
-      if (error) {
-        toast.error(`Error al eliminar: ${error.message}`);
-      } else {
-        toast.success('Usuario eliminado.');
-        setUsers(prev => prev.filter(u => u.id !== userId));
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('Tu sesión ha expirado. Vuelve a iniciar sesión.');
       }
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/delete-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: supabaseKey,
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      const rawResponse = await response.text();
+      const parsedResponse = rawResponse ? JSON.parse(rawResponse) : null;
+
+      if (!response.ok) {
+        throw new Error(parsedResponse?.error || parsedResponse?.message || `Error ${response.status}`);
+      }
+
+      toast.success('Usuario eliminado.');
+      setUsers(prev => prev.filter(u => u.id !== userId));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error inesperado.';
       toast.error(`Error: ${message}`);

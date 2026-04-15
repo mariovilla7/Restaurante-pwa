@@ -4,6 +4,8 @@ import type { Mesa } from '@/types/database';
 import { toast } from 'sonner';
 import { Trash2, QrCode, Copy, XCircle } from 'lucide-react';
 
+const ACTIVE_ORDER_STATUSES = ['en_espera', 'preparando', 'listo'] as const;
+
 export function AdminMesas() {
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,18 +72,18 @@ export function AdminMesas() {
   }
 
   async function cerrarMesa(mesa: Mesa) {
-    if (!confirm(`¿Cerrar Mesa ${mesa.numero}? Se vaciará el carrito y se archivarán los pedidos como "pagado".`)) return;
+    if (!confirm(`¿Cerrar Mesa ${mesa.numero}? Se vaciará el carrito y se archivarán los pedidos activos.`)) return;
 
     const [cartRes, pedidoRes] = await Promise.all([
       supabase.from('carrito_items').delete().eq('mesa_id', mesa.id),
-      supabase.from('pedidos').update({ estado: 'pagado' }).eq('mesa_id', mesa.id).neq('estado', 'pagado'),
+      supabase.from('pedidos').update({ estado: 'servido' }).eq('mesa_id', mesa.id).in('estado', [...ACTIVE_ORDER_STATUSES]),
     ]);
 
     if (cartRes.error) toast.error('Error limpiando carrito: ' + cartRes.error.message);
     if (pedidoRes.error) toast.error('Error archivando pedidos: ' + pedidoRes.error.message);
 
     if (!cartRes.error && !pedidoRes.error) {
-      toast.success(`Mesa ${mesa.numero} cerrada. Carrito y pedidos archivados.`);
+      toast.success(`Mesa ${mesa.numero} cerrada y liberada.`);
     }
   }
 

@@ -1,5 +1,12 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -8,62 +15,52 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Authorization header missing' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (!authHeader?.startsWith('Bearer ')) {
+      return jsonResponse({ error: 'Authorization header missing' }, 401);
+    }
+
+    const supabaseUser = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } },
+    );
+
+    const token = authHeader.replace('Bearer ', '').trim();
+    const { data: claimsData, error: claimsError } = await supabaseUser.auth.getClaims(token);
+    const claims = claimsData?.claims as { sub?: string; app_metadata?: { role?: string } } | undefined;
+
+    if (claimsError || !claims?.sub) {
+      return jsonResponse({ error: 'Token inválido.' }, 401);
+    }
+
+    if (claims.app_metadata?.role !== 'admin') {
+      return jsonResponse({ error: 'Acceso denegado.' }, 403);
+    }
+
+    const body = await req.json().catch(() => null);
+    const userId = typeof body?.userId === 'string' ? body.userId : '';
+
+    if (!userId) {
+      return jsonResponse({ error: 'Se requiere userId.' }, 400);
+    }
+
+    if (userId === claims.sub) {
+      return jsonResponse({ error: 'No puedes eliminar tu propia cuenta.' }, 400);
     }
 
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
-
-    // Validate the calling user is admin
-    const userClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Token inválido.' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    if (user.app_metadata?.role !== 'admin') {
-      return new Response(JSON.stringify({ error: 'Acceso denegado.' }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const { userId } = await req.json();
-    if (!userId) {
-      return new Response(JSON.stringify({ error: 'Se requiere userId.' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (userId === user.id) {
-      return new Response(JSON.stringify({ error: 'No puedes eliminar tu propia cuenta.' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
 
     const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
     if (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: error.message }, 500);
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ success: true }, 200);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: message }, 500);
   }
 });
