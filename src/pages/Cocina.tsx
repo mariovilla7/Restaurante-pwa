@@ -113,7 +113,12 @@ export default function CocinaPage() {
   useRealtimeSubscription('notificaciones', '*', handleRealtimeChange);
 
   async function updateItemStatus(itemId: string, newStatus: 'en_cocina' | 'listo') {
-    await supabase.from('pedido_items').update({ estado: newStatus }).eq('id', itemId);
+    const { error: itemError } = await supabase.from('pedido_items').update({ estado: newStatus }).eq('id', itemId);
+
+    if (itemError) {
+      toast.error(`No se pudo actualizar el plato: ${itemError.message}`);
+      return;
+    }
 
     const pedido = pedidos.find(p => p.pedido_items.some(i => i.id === itemId));
     if (pedido && newStatus === 'listo') {
@@ -121,20 +126,42 @@ export default function CocinaPage() {
         i.id === itemId ? true : i.estado === 'listo'
       );
       if (allReady) {
-        await supabase.from('pedidos').update({ estado: 'listo' }).eq('id', pedido.id);
-        toast.success(`¡Pedido Mesa ${pedido.mesa?.numero} listo! 🎉`);
+        const { error: pedidoError } = await supabase.from('pedidos').update({ estado: 'listo' }).eq('id', pedido.id);
+        if (pedidoError) {
+          toast.error(`No se pudo marcar el ticket como listo: ${pedidoError.message}`);
+        } else {
+          toast.success(`¡Pedido Mesa ${pedido.mesa?.numero} listo! 🎉`);
+        }
       }
     }
     if (newStatus === 'en_cocina' && pedido?.estado === 'en_espera') {
-      await supabase.from('pedidos').update({ estado: 'preparando' }).eq('id', pedido.id);
+      const { error: pedidoError } = await supabase.from('pedidos').update({ estado: 'preparando' }).eq('id', pedido.id);
+      if (pedidoError) {
+        toast.error(`No se pudo pasar el ticket a preparación: ${pedidoError.message}`);
+      }
     }
-    loadData();
+    await loadData();
   }
 
-  async function updatePedidoStatus(pedidoId: string, estado: string) {
-    await supabase.from('pedidos').update({ estado }).eq('id', pedidoId);
+  async function updatePedidoStatus(pedido: FullPedido, estado: 'preparando' | 'listo' | 'servido') {
+    const responses = await Promise.all([
+      supabase.from('pedidos').update({ estado }).eq('id', pedido.id),
+      ...(estado === 'preparando'
+        ? [supabase.from('pedido_items').update({ estado: 'en_cocina' }).eq('pedido_id', pedido.id).eq('estado', 'pendiente')]
+        : []),
+      ...(estado === 'listo'
+        ? [supabase.from('pedido_items').update({ estado: 'listo' }).eq('pedido_id', pedido.id).neq('estado', 'listo')]
+        : []),
+    ]);
+
+    const failedResponse = responses.find((response) => response.error);
+    if (failedResponse?.error) {
+      toast.error(`No se pudo actualizar el ticket: ${failedResponse.error.message}`);
+      return;
+    }
+
     toast.success(`Pedido marcado como "${estado.replace('_', ' ')}"`);
-    loadData();
+    await loadData();
   }
 
   async function markNotificationHandled(id: string) {
@@ -265,10 +292,26 @@ export default function CocinaPage() {
                         {pedido.estado === 'en_espera' ? '⏳ En espera' : pedido.estado === 'preparando' ? '👨‍🍳 Preparando' : '✅ Listo'}
                       </p>
                       {/* Pedido-level actions */}
-                      <div className="flex gap-1">
+                        <div className="flex gap-1 flex-wrap justify-end">
+                          {pedido.estado === 'en_espera' && (
+                            <button
+                              onClick={() => updatePedidoStatus(pedido, 'preparando')}
+                              className="bg-primary text-primary-foreground text-xs px-2 py-1 rounded-md font-medium touch-target flex items-center gap-1"
+                            >
+                              <ChefHat className="w-3 h-3" /> Empezar
+                            </button>
+                          )}
+                          {pedido.estado === 'preparando' && (
+                            <button
+                              onClick={() => updatePedidoStatus(pedido, 'listo')}
+                              className="bg-success text-success-foreground text-xs px-2 py-1 rounded-md font-medium touch-target flex items-center gap-1"
+                            >
+                              <CheckCircle className="w-3 h-3" /> Marcar listo
+                            </button>
+                          )}
                         {pedido.estado === 'listo' && (
                           <button
-                            onClick={() => updatePedidoStatus(pedido.id, 'servido')}
+                              onClick={() => updatePedidoStatus(pedido, 'servido')}
                             className="bg-success text-success-foreground text-xs px-2 py-1 rounded-md font-medium touch-target flex items-center gap-1"
                           >
                             <Truck className="w-3 h-3" /> Servido

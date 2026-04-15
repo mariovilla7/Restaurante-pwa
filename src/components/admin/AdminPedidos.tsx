@@ -7,6 +7,8 @@ import { es } from 'date-fns/locale';
 import { Bell, Receipt, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
+const ACTIVE_ORDER_STATUSES = ['en_espera', 'preparando', 'listo'] as const;
+
 export function AdminPedidos() {
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [notificaciones, setNotificaciones] = useState<any[]>([]);
@@ -16,7 +18,7 @@ export function AdminPedidos() {
 
   async function loadData() {
     const [pedRes, notRes] = await Promise.all([
-      supabase.from('pedidos').select('*, mesa:mesas(*), pedido_items(*, plato:platos(*))').neq('estado', 'pagado').order('created_at', { ascending: false }).limit(50),
+      supabase.from('pedidos').select('*, mesa:mesas(*), pedido_items(*, plato:platos(*))').in('estado', [...ACTIVE_ORDER_STATUSES]).order('created_at', { ascending: false }).limit(50),
       supabase.from('notificaciones').select('*, mesa:mesas(*)').eq('atendida', false).order('created_at', { ascending: false }),
     ]);
     if (pedRes.data) setPedidos(pedRes.data);
@@ -35,7 +37,7 @@ export function AdminPedidos() {
     if (n.tipo === 'cuenta' && n.mesa_id) {
       await Promise.all([
         supabase.from('carrito_items').delete().eq('mesa_id', n.mesa_id),
-        supabase.from('pedidos').update({ estado: 'pagado' }).eq('mesa_id', n.mesa_id).neq('estado', 'pagado'),
+        supabase.from('pedidos').update({ estado: 'servido' }).eq('mesa_id', n.mesa_id).in('estado', [...ACTIVE_ORDER_STATUSES]),
       ]);
       toast.success(`Mesa ${n.mesa?.numero || '?'} cobrada y liberada automáticamente.`);
     } else {
