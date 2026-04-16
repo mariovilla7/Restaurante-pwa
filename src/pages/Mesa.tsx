@@ -5,9 +5,10 @@ import { getMesaSession, clearMesaSession, refreshMesaSession } from '@/lib/mesa
 import { useSharedCart } from '@/hooks/useSharedCart';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import type { Mesa, Plato, Categoria, Pedido, PedidoItem } from '@/types/database';
-import { Wifi, WifiOff, Loader2, Trash2, Minus, Plus, ShoppingCart, QrCode, Hand, Receipt } from 'lucide-react';
+import { Wifi, WifiOff, Loader2, ShoppingCart, QrCode, Hand, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
-import { OrderStatus } from '@/components/mesa/OrderStatus';
+import { ActiveOrdersBar } from '@/components/mesa/ActiveOrdersBar';
+import { CartDock } from '@/components/mesa/CartDock';
 
 export default function MesaPage() {
   const { numero } = useParams<{ numero: string }>();
@@ -19,6 +20,7 @@ export default function MesaPage() {
   const [accessDenied, setAccessDenied] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [cartOpen, setCartOpen] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
   const [activePedidos, setActivePedidos] = useState<(Pedido & { pedido_items: PedidoItem[] })[]>([]);
 
   const cart = useSharedCart(mesa?.id ?? null);
@@ -232,14 +234,7 @@ export default function MesaPage() {
         </div>
       </header>
 
-      {/* Active orders status */}
-      {activePedidos.length > 0 && (
-        <div className="flex-shrink-0">
-          {activePedidos.map(p => (
-            <OrderStatus key={p.id} pedido={p} items={p.pedido_items} />
-          ))}
-        </div>
-      )}
+      <ActiveOrdersBar open={ordersOpen} onOpenChange={setOrdersOpen} pedidos={activePedidos} />
 
       {/* Category Tabs */}
       {categorias.length > 0 && (
@@ -261,7 +256,7 @@ export default function MesaPage() {
       )}
 
       {/* Menu Grid */}
-      <main className="flex-1 overflow-y-auto p-4 pb-28 min-h-0">
+      <main className="flex-1 overflow-y-auto p-4 pb-4 min-h-0">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {filteredPlatos.map(plato => (
             <div key={plato.id} className="bg-card border rounded-lg p-4 flex flex-col">
@@ -287,62 +282,10 @@ export default function MesaPage() {
         )}
       </main>
 
-      {/* Cart Panel */}
-      {cartOpen && (
-        <div className="mb-24 border-t bg-card flex-shrink-0 max-h-[45vh] flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 border-b">
-            <h3 className="text-lg font-bold">Tu Pedido ({cart.itemCount})</h3>
-            <button onClick={() => setCartOpen(false)} className="text-muted-foreground text-sm">Cerrar</button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {cart.items.length === 0 ? (
-              <p className="text-center text-muted-foreground py-4">El carrito está vacío</p>
-            ) : (
-              cart.items.map(item => (
-                <div key={item.id} className="bg-secondary rounded-lg p-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold truncate">{item.plato?.nombre}</h4>
-                      <p className="text-sm text-muted-foreground">{(item.plato?.precio ?? 0).toFixed(2)}€ c/u</p>
-                    </div>
-                    <button onClick={() => cart.removeItem(item.id)} className="text-destructive p-1">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-3 mt-2">
-                    <button onClick={() => cart.updateQuantity(item.id, item.cantidad - 1)} className="bg-card border rounded-lg w-8 h-8 flex items-center justify-center touch-target">
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="font-bold">{item.cantidad}</span>
-                    <button onClick={() => cart.updateQuantity(item.id, item.cantidad + 1)} className="bg-card border rounded-lg w-8 h-8 flex items-center justify-center touch-target">
-                      <Plus className="w-3 h-3" />
-                    </button>
-                    <span className="ml-auto font-bold">{((item.plato?.precio ?? 0) * item.cantidad).toFixed(2)}€</span>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Notas (sin gluten, etc.)"
-                    value={item.notas || ''}
-                    onChange={e => cart.updateNotes(item.id, e.target.value)}
-                    className="mt-2 w-full bg-card border rounded-md px-3 py-2 text-sm"
-                  />
-                </div>
-              ))
-            )}
-          </div>
-          {cart.items.length > 0 && (
-            <div className="border-t px-4 py-3 flex items-center justify-between">
-              <span className="text-lg font-bold">Total: {cart.total.toFixed(2)}€</span>
-              <button onClick={placeOrder} className="bg-success text-success-foreground font-bold px-6 py-3 rounded-lg touch-target">
-                Confirmar Pedido
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      <CartDock open={cartOpen} onOpenChange={setCartOpen} cart={cart} onSubmit={placeOrder} />
 
       {/* Footer actions */}
-      <footer className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur supports-[backdrop-filter]:bg-card/80">
+      <footer className="border-t bg-card/95 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur supports-[backdrop-filter]:bg-card/80 flex-shrink-0">
         <div className="mx-auto grid max-w-3xl grid-cols-2 gap-3">
           <button
             onClick={callWaiter}
