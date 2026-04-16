@@ -4,10 +4,17 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import type { Pedido, Notificacion } from '@/types/database';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Bell, Receipt, CheckCircle, XCircle } from 'lucide-react';
+import { Bell, Receipt, CheckCircle, XCircle, Clock, ChefHat } from 'lucide-react';
 import { toast } from 'sonner';
 
 const ACTIVE_ORDER_STATUSES = ['en_espera', 'preparando', 'listo'] as const;
+
+const STATUS_OPTIONS = [
+  { value: 'en_espera', label: 'En espera', icon: Clock },
+  { value: 'preparando', label: 'Preparando', icon: ChefHat },
+  { value: 'listo', label: 'Listo', icon: CheckCircle },
+  { value: 'servido', label: 'Servido', icon: XCircle },
+] as const;
 
 export function AdminPedidos() {
   const [pedidos, setPedidos] = useState<any[]>([]);
@@ -28,6 +35,7 @@ export function AdminPedidos() {
 
   const handleChange = useCallback(() => { loadData(); }, []);
   useRealtimeSubscription('pedidos', '*', handleChange);
+  useRealtimeSubscription('pedido_items', '*', handleChange);
   useRealtimeSubscription('notificaciones', '*', handleChange);
 
   async function markNotificationHandled(n: any) {
@@ -47,7 +55,26 @@ export function AdminPedidos() {
   }
 
   async function updatePedidoStatus(id: string, estado: string) {
-    await supabase.from('pedidos').update({ estado }).eq('id', id);
+    const responses = await Promise.all([
+      supabase.from('pedidos').update({ estado }).eq('id', id),
+      ...(estado === 'en_espera'
+        ? [supabase.from('pedido_items').update({ estado: 'pendiente' }).eq('pedido_id', id)]
+        : []),
+      ...(estado === 'preparando'
+        ? [supabase.from('pedido_items').update({ estado: 'en_cocina' }).eq('pedido_id', id)]
+        : []),
+      ...(estado === 'listo'
+        ? [supabase.from('pedido_items').update({ estado: 'listo' }).eq('pedido_id', id)]
+        : []),
+    ]);
+
+    const failedResponse = responses.find((response) => response.error);
+    if (failedResponse?.error) {
+      toast.error(`No se pudo cambiar el estado: ${failedResponse.error.message}`);
+      return;
+    }
+
+    toast.success(`Pedido actualizado a ${estado.replace('_', ' ')}`);
     loadData();
   }
 
@@ -123,12 +150,26 @@ export function AdminPedidos() {
                 ))}
               </div>
               {pedido.estado !== 'servido' && (
-                <div className="flex gap-2">
-                  {pedido.estado === 'listo' && (
-                    <button onClick={() => updatePedidoStatus(pedido.id, 'servido')} className="text-sm bg-success text-success-foreground px-3 py-1 rounded-md">
-                      Marcar Servido
-                    </button>
-                  )}
+                <div className="flex gap-2 flex-wrap">
+                  {STATUS_OPTIONS.map((option) => {
+                    const Icon = option.icon;
+
+                    return (
+                      <button
+                        key={option.value}
+                        onClick={() => updatePedidoStatus(pedido.id, option.value)}
+                        disabled={pedido.estado === option.value}
+                        className={`touch-target inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                          pedido.estado === option.value
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-secondary-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        {option.label}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
